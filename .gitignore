@@ -1,0 +1,38 @@
+# ---- Python ----
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.py.class
+
+# ---- Virtual Environment ----
+venv/
+env/
+
+# ---- Data files ----
+*.db
+*.sqlite3
+*.csv
+
+# ---- IDE / Editor ----
+.vscode/
+.idea/
+*.swp
+
+# ---- OS-specific ----
+.DS_Store
+Thumbs.db
+
+# ---- Logs ----
+*.log
+
+# ---- Streamlit ----
+.streamlit/
+
+# ---- FastAPI / Local Config ----
+.env
+*.json
+
+# ---- Temporary ----
+tmp/
+*.bak
