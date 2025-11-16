@@ -1,0 +1,14 @@
+# Core dependencies
+pandas>=1.5.0
+numpy>=1.23.0
+
+# Machine learning and clustering
+scikit-learn>=1.2.0
+# scikit-learn-extra>=0.3.0  # Optional: For K-Medoids (requires C++ build tools)
+# Note: You can use sklearn.cluster.KMeans instead, or implement K-Medoids yourself
+
+# Optional: for distance computations
+scipy>=1.9.0
+
+# Visualization
+matplotlib>=3.6.0
