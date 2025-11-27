@@ -23,7 +23,7 @@ def main():
     """
     # Step 1: Load data
     #input_file = "data/sample_students.csv"
-    input_file = Path(__file__).resolve().parent / "data" / "sample_students.csv"
+    input_file = Path(__file__).resolve().parent / "data" / "sample_students100.csv"
    
     df = load_student_data(str(input_file)) #First thing to do
     
@@ -38,7 +38,7 @@ def main():
     # TODO: Step 3: Preprocess data
     df_cleaned = preprocess_data(df)
 
-    #Final Processed data output
+    # #Final Processed data output
     # print("\n=== FINAL PREPROCESSED DATA ===")
     # print(df_cleaned.head())    # show first 5 rows
     # print("\n=== DATA TYPES ===")
@@ -49,37 +49,37 @@ def main():
     # print("Diversity:", df_cleaned["Diversity"].unique())
 
     
-    # TODO: Step 4: Form groups
-    n_groups = 4  # Change this to desired number of groups
+    # # TODO: Step 4: Form groups
+    n_groups = 10  # Change this to desired number of groups
     result_df, groups_dict = form_balanced_groups(
         df_cleaned,
         n_groups=n_groups,
         random_state=42,
-        enforce_gender_balance=True,
-        enforce_diversity_balance=True
+        enforce_gender_balance=False,
+        enforce_diversity_balance=False
     )
     
-    # TODO: Step 5: Display and save results
-    # print("Group Assignments:")
-    # print(result_df[['Name', 'Group', 'Gender', 'Diversity', 'Motivation', 'Self_Esteem', 'Work_Ethic']])
-    # 
-    # print("\nGroup Composition:")
-    # for group_id, students in groups_dict.items():
-    #     group_data = result_df[result_df['Group'] == group_id]
-    #     print(f"\nGroup {group_id} ({len(students)} students):")
-    #     print(f"  Students: {', '.join(students)}")
-    #     print(f"  Gender: {group_data['Gender'].value_counts().to_dict()}")
-    #     print(f"  Diversity: {group_data['Diversity'].value_counts().to_dict()}")
-    #     print(f"  Avg Motivation: {group_data['Motivation'].mean():.2f}")
-    #     print(f"  Avg Self-Esteem: {group_data['Self_Esteem'].mean():.2f}")
-    #     print(f"  Avg Work-Ethic: {group_data['Work_Ethic'].mean():.2f}")
-    # 
-    # # Save results
-    # output_file = "group_assignments.csv"
-    # result_df.to_csv(output_file, index=False)
-    # print(f"\nResults saved to {output_file}")
+    # # TODO: Step 5: Display and save results
+    # # print("Group Assignments:")
+    # # print(result_df[['Name', 'Group', 'Gender', 'Diversity', 'Motivation', 'Self_Esteem', 'Work_Ethic']])
+    # # 
+    # # print("\nGroup Composition:")
+    # # for group_id, students in groups_dict.items():
+    # #     group_data = result_df[result_df['Group'] == group_id]
+    # #     print(f"\nGroup {group_id} ({len(students)} students):")
+    # #     print(f"  Students: {', '.join(students)}")
+    # #     print(f"  Gender: {group_data['Gender'].value_counts().to_dict()}")
+    # #     print(f"  Diversity: {group_data['Diversity'].value_counts().to_dict()}")
+    # #     print(f"  Avg Motivation: {group_data['Motivation'].mean():.2f}")
+    # #     print(f"  Avg Self-Esteem: {group_data['Self_Esteem'].mean():.2f}")
+    # #     print(f"  Avg Work-Ethic: {group_data['Work_Ethic'].mean():.2f}")
+    # # 
+    # # # Save results
+    # # output_file = "group_assignments.csv"
+    # # result_df.to_csv(output_file, index=False)
+    # # print(f"\nResults saved to {output_file}")
     
-    print("TODO: Implement the main() function following the comments above")
+    # print("TODO: Implement the main() function following the comments above")
 
 if __name__ == "__main__":
     main()

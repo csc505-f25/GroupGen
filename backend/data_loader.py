@@ -13,7 +13,7 @@ import pandas as pd
 from typing import Optional, List, Dict, Tuple
 
 
-def load_student_data(filepath: str) -> pd.DataFrame:
+def load_student_data(filepath):
     """
     Load student data from a CSV file.
     
@@ -43,17 +43,23 @@ def load_student_data(filepath: str) -> pd.DataFrame:
         raise FileNotFoundError(f"File not found: {filepath}")
     except Exception as e:
         raise Exception(f"Error loading CSV: {e}")
+    
+    missing_cols = []
 
     # Validate required columns
-    missing = [c for c in required_columns if c not in df.columns]
-    if missing:
-        raise ValueError(f"Missing required columns: {missing}")
+    for cols in required_columns:
+        if cols not in df.columns:
+            missing_cols.append(cols)
+
+    if missing_cols:
+        raise ValueError(f"Missing required columns: {missing_cols}")
+   
 
     return df
 
 
 
-def validate_data(df: pd.DataFrame) -> Tuple[bool, List[str]]:
+def validate_data(df):
     """
     Validate that the DataFrame has all required columns and valid data.
     
@@ -85,37 +91,65 @@ def validate_data(df: pd.DataFrame) -> Tuple[bool, List[str]]:
             errors.append(f"{col} contains values outside the 1–4 range.")
 
     # Check for missing values
-    if df.isnull().any().any():
+    if df.isna().to_numpy().any():
         errors.append("Data contains missing values.")
 
-    return (len(errors) == 0, errors)
+    return {"is_valid": len(errors) == 0,"errors": errors}
 
 
 
-def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
+def preprocess_data(df):
     """
     Clean and preprocess the student data.
     """
-    
-    # Handle missing values (drop rows with missing data)
-    df = df.dropna()
 
+    # Step 1: Check for missing values
+    missing = df.isnull()
+    if missing.any().any():
+        print("=== MISSING DATA FOUND ===")
+        for col in df.columns:
+            if missing[col].any():
+                missing_rows = df.index[missing[col]].tolist()
+                print(f"Column '{col}' has missing values at rows: {missing_rows}")
+    else:
+        print("No missing data found.")
+
+    # Step 2: Make a copy for safe preprocessing
+    df_cleaned = df.copy()
+
+
+      # Step 1: Check for missing values
+    missing = df.isnull()
+    if missing.any().any():
+        print("=== MISSING DATA FOUND ===")
+        for col in df.columns:
+            if missing[col].any():
+                missing_rows = df.index[missing[col]].tolist()
+                print(f"Column '{col}' has missing values at rows: {missing_rows}")
+    else:
+        print("No missing data found.")
+
+    # Step 2: Make a copy for safe preprocessing
+    df_cleaned = df.copy()
+
+
+    # Step 3: Normalize categorical data
     # Normalize Gender
-    df["Gender"] = df["Gender"].str.strip().str.capitalize()
-    df["Gender"] = df["Gender"].replace({
+    df_cleaned["Gender"] = df_cleaned["Gender"].str.strip().str.capitalize()
+    df_cleaned["Gender"] = df_cleaned["Gender"].replace({
         "M": "Male",
         "F": "Female"
     })
 
     # Normalize Learning Style
-    df["Learning_Style"] = df["Learning_Style"].str.strip().str.capitalize()
+    df_cleaned["Learning_Style"] = df_cleaned["Learning_Style"].str.strip().str.capitalize()
 
     # Standardize Diversity categories
-    df["Diversity"] = df["Diversity"].str.strip().str.title()
+    df_cleaned["Diversity"] = df_cleaned["Diversity"].str.strip().str.title()
 
     # Ensure numeric columns are numeric
-    numeric_cols = ["Motivation", "Self_Esteem", "Work_Ethic"]
-    df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, errors="coerce")
+    num_cols = ["Motivation", "Self_Esteem", "Work_Ethic"]
+    df_cleaned[num_cols] = df_cleaned[num_cols].apply(pd.to_numeric, errors="coerce")
 
-    return df
+    return df_cleaned
 

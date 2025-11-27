@@ -1,116 +1,116 @@
-# GroupGen
+# GroupGen: Automated Student Grouping System
 
-A Python project that automatically forms balanced and diverse student groups using clustering, with special locking mechanisms to prevent gender and diversity isolation.
-
-## Features
-
-- **Feature-based Clustering**: Groups students based on Motivation, Self-Esteem, Work-Ethic, and Learning Style
-- **Gender Balance Locking**: Ensures no student is the only one of their gender in a group
-- **Diversity Balance Locking**: Ensures no student is the only one of their diversity category in a group
-- **Modular Design**: Clean skeleton code structure for easy implementation
+GroupGen is a machine learning pipeline designed to form student groups that are both skill-balanced and demographically inclusive. It uses unsupervised clustering algorithms to group students based on behavioral traits (Motivation, Work Ethic, Self-Esteem) and applies a custom "Locking Mechanism" to ensure fairness and prevent demographic isolation.
 
 ## Project Structure
+
+The project is divided into two distinct phases:
+
+1.  **Evaluation & Research:** A comparative analysis ("Tournament") of K-Means vs. K-Medoids using Euclidean, Manhattan, and Gower distances to determine the optimal algorithm.
+2.  **Implementation:** The production pipeline that uses the winning algorithm (K-Medoids Manhattan) to generate actual student groups with "Smart Fill" logistics and Diversity Locking.
 
 ```
 GroupGen/
 ├── backend/
 │   ├── __init__.py
-│   ├── data_loader.py      # Data loading and validation (TODO: implement)
-│   ├── clustering.py        # Clustering with locking mechanisms (TODO: implement)
-│   └── main.py              # Main orchestration script (TODO: implement)
-├── sample_students.csv      # Example data file
+│   ├── data_loader.py       # Loads and validates CSV data
+│   ├── clustering.py        # Core clustering logic & locking mechanisms
+│   ├── kmedoids.py          # Custom K-Medoids (PAM) implementation
+│   ├── evaluate_clustering.py # Metrics (Silhouette, Entropy, Variance)
+│   ├── run_full_evaluation.py # PART 1: The Evaluation Script
+│   ├── generate_groups.py     # PART 2: The Group Generator
+│   └── data/
+│       └── sample_students100.csv
+|       └── sample_students30.csv      # Example data file
 ├── requirements.txt         # Python dependencies
 ├── IMPLEMENTATION_GUIDE.md  # Detailed implementation instructions
 └── README.md               # This file
 ```
 
-## Data Format
-
-Your CSV file should have these columns:
-- `Name`: Student name/ID
-- `Gender`: 'M'/'F' or 'Male'/'Female'
-- `Motivation`: 1-4 scale
-- `Self_Esteem`: 1-4 scale
-- `Work_Ethic`: 1-4 scale
-- `Learning_Style`: e.g., 'Visual', 'Auditory', 'Kinesthetic'
-- `Diversity`: e.g., 'White American', 'Black American', 'Hispanic', etc.
-
-See `sample_students.csv` for an example.
-
-**Note on Scale**: The 1-4 scale for Motivation, Self-Esteem, and Work-Ethic is used to make it easier to convert from binary responses (Yes/No, Agree/Disagree) that you may receive from actual students in classrooms.
-
 ## Installation
 
-1. Install dependencies:
+Clone the repository
+
+```bash
+git clone https://github.com/yourusername/GroupGen.git
+cd GroupGen
+```
+
+
+## Install dependencies:
+
 ```bash
 pip install -r requirements.txt
 ```
 
-## Implementation Status
+(Requires: numpy, pandas, scikit-learn, matplotlib, gower)
 
-This is a **skeleton codebase** with TODO comments. You need to implement:
+## Part 1: Evaluation & Research
 
-1. **Data Loading** (`backend/data_loader.py`):
-   - Load CSV files
-   - Validate data
-   - Preprocess data
+Objective: To scientifically compare clustering algorithms and determine which one best balances structural integrity with demographic diversity.
 
-2. **Clustering** (`backend/clustering.py`):
-   - Compute feature vectors
-   - Compute distance matrices
-   - Perform initial clustering
-   - Detect gender/diversity isolation
-   - Fix isolation issues
+This script runs a tournament between:
 
-3. **Main Script** (`backend/main.py`):
-   - Orchestrate the workflow
-   - Display results
+- K-Means (Euclidean)
 
-See `IMPLEMENTATION_GUIDE.md` for detailed instructions.
+- K-Means (Manhattan)
 
-## Usage (After Implementation)
+- K-Medoids (Manhattan)
 
-```python
-from backend import load_student_data, form_balanced_groups
+- K-Medoids (Gower)
 
-# Load data
-df = load_student_data("students.csv")
+It generates comparison tables, skill variance reports, and visual plots.
 
-# Form groups
-result_df, groups_dict = form_balanced_groups(
-    df,
-    n_groups=5,
-    enforce_gender_balance=True,
-    enforce_diversity_balance=True
-)
+How to Run:
 
-# View results
-print(result_df[['Name', 'Group', 'Gender', 'Diversity']])
+```bash
+python -m backend.run_full_evaluation
+
 ```
 
-## Key Concepts
+### What to Expect:
 
-### Gender/Diversity Locking
+- The script will prompt you for a Group Size.
 
-The algorithm prevents isolation by:
-1. Performing initial clustering based on features
-2. Detecting groups where one student is isolated (e.g., one female among many males)
-3. Fixing isolation by swapping or moving students to ensure balance
+- It calculates metrics like Silhouette Score, Calinski-Harabasz Index, and Mean Gender Entropy.
 
-### Clustering Features
+- It saves plots (Bar charts, Scatter plots) to backend/output_plots/.
 
-Students are clustered based on:
-- **Motivation** (1-4)
-- **Self-Esteem** (1-4)
-- **Work-Ethic** (1-4)
-- **Learning Style** (categorical, encoded as numeric)
+- It prints a final Comparison Table to the console declaring the performance of each metric.
 
-## Next Steps
+## Part 2: Group Generation(The Tool)
 
-1. Read `IMPLEMENTATION_GUIDE.md` for detailed instructions
-2. Implement the functions marked with `TODO` comments
-3. Test with `sample_students.csv`
-4. Refine the locking mechanisms as needed
+Objective: To generate the final, optimized student groups for a classroom using the best-performing algorithm (K-Medoids Manhattan).
+
+This script handles real-world logistics:
+
+- Smart Fill: Distributes remainder students (e.g., class size 31, target 5) to their mathematically closest group.
+
+- Locking Mechanism: Automatically swaps students to fix gender/diversity isolation without breaking the clusters.
+
+How to Run:
+
+```bash
+python -m backend.generate_groups
+```
+
+### What to Expect
+- The script will prompt you for the Target Group Size.
+- It runs the full pipeline
+- It saves the final group assignments to: backend/output/final_groups.csv
+
+## Data Format 
+The system expects a CSV file with the following columns
+
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `Name` | String | Student Identifier |
+| `Gender` | String | Male / Female |
+| `Motivation` | Int (1-4) | 1=Low, 4=High |
+| `Self_Esteem` | Int (1-4) | 1=Low, 4=High |
+| `Work_Ethic` | Int (1-4) | 1=Low, 4=High |
+| `Learning_Style` | String | Visual, Auditory, Kinesthetic |
+| `Diversity` | String | Race/Ethnicity category |
 
 ## License
 
