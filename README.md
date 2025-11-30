@@ -86,7 +86,7 @@ This script handles real-world logistics:
 
 - Smart Fill: Distributes remainder students (e.g., class size 31, target 5) to their mathematically closest group.
 
-- Locking Mechanism: Automatically swaps students to fix gender/diversity isolation without breaking the clusters.
+- Locking Mechanism: Automatically swaps students to fix gender isolation without breaking the clusters.
 
 How to Run:
 
