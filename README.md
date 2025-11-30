@@ -105,7 +105,7 @@ The system expects a CSV file with the following columns
 | Column | Type | Description |
 | :--- | :--- | :--- |
 | `Name` | String | Student Identifier |
-| `Gender` | String | Male / Female |
+| `Gender` | String | Male / Female / Other |
 | `Motivation` | Int (1-4) | 1=Low, 4=High |
 | `Self_Esteem` | Int (1-4) | 1=Low, 4=High |
 | `Work_Ethic` | Int (1-4) | 1=Low, 4=High |
