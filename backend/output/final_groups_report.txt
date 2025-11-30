@@ -1,0 +1,44 @@
+
+=================================================================
+FINAL GROUP ASSIGNMENTS REPORT
+=================================================================
+
+📂 GROUP 1 (4 students)
+-----------------------------------------------------------------
+Name                 | Gender   | Ethnicity            | Style     
+-----------------------------------------------------------------
+Emory Salaun         | Male     | Caucasian            | Kinesthetic
+Kye Farhadi          | Male     | Asian                | Kinesthetic
+Shaun Wallace        | Male     | Caucasian            | Kinesthetic
+Thierno              | Male     | Black/African        | Kinesthetic
+-----------------------------------------------------------------
+
+📂 GROUP 2 (4 students)
+-----------------------------------------------------------------
+Name                 | Gender   | Ethnicity            | Style     
+-----------------------------------------------------------------
+Brennon Pafume       | Male     | Caucasian            | Auditory  
+Liam Washburn        | Male     | Caucasian            | Kinesthetic
+Lily Nguyen          | Female   | Asian                | Visual    
+Nadia Sutyrina       | Female   | Caucasian            | Visual    
+-----------------------------------------------------------------
+
+📂 GROUP 3 (4 students)
+-----------------------------------------------------------------
+Name                 | Gender   | Ethnicity            | Style     
+-----------------------------------------------------------------
+Aidan Leach          | Male     | Caucasian            | Visual    
+Ben Dahrooge         | Male     | Caucasian            | Visual    
+Dominic Tucchio      | Male     | Caucasian            | Visual    
+Peter Finch          | Male     | Caucasian            | Visual    
+-----------------------------------------------------------------
+
+📂 GROUP 4 (4 students)
+-----------------------------------------------------------------
+Name                 | Gender   | Ethnicity            | Style     
+-----------------------------------------------------------------
+Emily Light          | Female   | Caucasian            | Visual    
+Jack Lanoie          | Male     | Caucasian            | Visual    
+Jenny You            | Female   | Asian                | Visual    
+Ryan Brooks          | Male     | Caucasian            | Visual    
+-----------------------------------------------------------------

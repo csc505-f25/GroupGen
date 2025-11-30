@@ -5,12 +5,8 @@ from pathlib import Path
 # Imports
 from .data_loader import load_student_data, preprocess_data
 from .clustering import (
-    compute_feature_vector, 
-    compute_distance_matrix,
-    enforce_group_size, 
-    optimize_gender_balance
-)
-from .kmedoids import kmedoids_pam_from_matrix
+    compute_feature_vector, compute_distance_matrix, enforce_group_size, check_gender_isolation, fix_gender_isolation)
+from .kmedoids import kmedoids_pam
 
 
 # Configuration & Input
@@ -55,7 +51,7 @@ def run_grouping_pipeline(df: pd.DataFrame, n_groups: int, target_size: int) -> 
 
     # Clustering K-Medoids Manhattan
     print("   > [Step 2] Clustering (K-Medoids Manhattan)...")
-    labels, medoid_indices = kmedoids_pam_from_matrix(
+    labels, medoid_indices = kmedoids_pam(
         dist_manhattan, 
         n_groups, 
         random_state=42
@@ -72,11 +68,12 @@ def run_grouping_pipeline(df: pd.DataFrame, n_groups: int, target_size: int) -> 
 
     # D. Constraints (Locking System)
     print("   > [Step 4] Optimizing Gender Balance...")
-    labels = optimize_gender_balance(
+    isolated_g= check_gender_isolation(df, labels)
+    labels = fix_gender_isolation(
         df, 
         labels, 
-        medoid_indices, 
-        dist_manhattan
+        dist_manhattan,
+        isolated_g
     )
     
     return labels
@@ -85,22 +82,81 @@ def run_grouping_pipeline(df: pd.DataFrame, n_groups: int, target_size: int) -> 
 # 3. Output & Saving
 # ==========================================
 def save_results(df: pd.DataFrame, labels: np.ndarray, output_file: str):
-    """Formats the dataframe and saves to CSV."""
+    """
+    1. Saves the raw data to CSV.
+    2. IMMEDIATELY RELOADS that CSV to generate the text report.
+       (This guarantees the report matches the file exactly).
+    """
+    # --- STEP 1: PREPARE & SAVE CSV ---
     df_final = df.copy()
-    df_final['Group_ID'] = labels + 1 # 1-based indexing
+    # Force labels to simple integers
+    df_final['Group_ID'] = np.array(labels).astype(int) + 1 
     
     # Reorder columns
     cols = ['Group_ID'] + [c for c in df_final.columns if c != 'Group_ID']
     df_final = df_final[cols]
     
-    # Save
+    # Sort
+    df_final = df_final.sort_values(by=['Group_ID', 'Name'])
+    
+    # Save 
     output_path = Path(output_file)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     df_final.to_csv(output_path, index=False)
     
-    print(f"\n SUCCESS! Groups saved to: {output_path}")
-    print("\nFinal Group Distribution:")
-    print(df_final['Group_ID'].value_counts().sort_index())
+    print(f"\n✅ SUCCESS! Groups saved to: {output_path}")
+
+    # --- STEP 2: THE RELOAD (The Fix) ---
+    # We read the file we just saved. This gives us a 100% clean dataframe.
+    # No index issues, no hidden data issues.
+    print("   > Generating text report from saved CSV...")
+    df_clean = pd.read_csv(output_path)
+
+    # --- STEP 3: GENERATE TEXT REPORT ---
+    report_path = output_path.with_name(output_path.stem + "_report.txt")
+    
+    with open(report_path, "w", encoding="utf-8") as f:
+        
+        def write_line(text=""):
+            print(text)
+            f.write(text + "\n")
+
+        write_line("\n" + "="*65)
+        write_line("FINAL GROUP ASSIGNMENTS REPORT")
+        write_line("="*65)
+
+        # Get the unique Group IDs from the CLEAN dataframe
+        unique_groups = sorted(df_clean['Group_ID'].unique())
+
+        for g_id in unique_groups:
+            # Filter the CLEAN dataframe
+            group_data = df_clean[df_clean['Group_ID'] == g_id]
+            
+            # Header
+            write_line(f"\n📂 GROUP {g_id} ({len(group_data)} students)")
+            write_line("-" * 65)
+            
+            # Column Headers
+            header = f"{'Name':<20} | {'Gender':<8} | {'Ethnicity':<20} | {'Style':<10}"
+            write_line(header)
+            write_line("-" * 65)
+
+            # Rows
+            for _, row in group_data.iterrows():
+                # Since we reloaded from CSV, these columns are guaranteed to exist as strings/ints
+                name = str(row['Name'])
+                gender = str(row['Gender'])
+                diversity = str(row['Diversity'])
+                style = str(row['Learning_Style'])
+
+                # Truncate long strings
+                if len(diversity) > 19: diversity = diversity[:17] + ".."
+
+                write_line(f"{name:<20} | {gender:<8} | {diversity:<20} | {style:<10}")
+            
+            write_line("-" * 65)
+            
+    print(f"✅ Readable Report saved to: {report_path}")
 
 # ==========================================
 # 4. Main Controller
@@ -111,7 +167,7 @@ def main():
     print("="*60)
 
     # Configuration
-    INPUT_CSV = "backend/data/students_100.csv"
+    INPUT_CSV = "backend/data/actual_students.csv"
     OUTPUT_CSV = "backend/output/final_groups.csv"
 
     # 1. Load Data

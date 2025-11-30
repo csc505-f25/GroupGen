@@ -504,45 +504,45 @@ def visualize_clustering_with_centroids(
     plt.show()
 
 
-# def check_gender_isolation(pd.DataFrame, labels):
-#     """
-#     Check if any group has gender isolation (e.g., all men and one woman).
+def check_gender_isolation(pd, labels):
+    """
+    Check if any group has gender isolation (e.g., all men and one woman).
     
-#     Args:
-#         df: DataFrame with student data (must have 'Gender' column)
-#         labels: Cluster labels for each student
+    Args:
+        df: DataFrame with student data (must have 'Gender' column)
+        labels: Cluster labels for each student
         
-#     Returns:
-#         Dictionary mapping group_id to isolation_type
-#         Example: {2: 'female_isolated'} means group 2 has one female isolated
-#     """
-#     isolation_dict = {}
-#     unique_labels = np.unique(labels)
+    Returns:
+        Dictionary mapping group_id to isolation_type
+        Example: {2: 'female_isolated'} means group 2 has one female isolated
+    """
+    isolation_dict = {}
+    unique_labels = np.unique(labels)
 
-#     for label in unique_labels:
-#         #get only students in this specific cluster
-#         group_mask = (labels == label)
-#         group_size = group_mask.sum()
+    for label in unique_labels:
+        #get only students in this specific cluster
+        group_mask = (labels == label)
+        group_size = group_mask.sum()
 
-#         #if group too small, skip
-#         if group_size < 4:
-#             continue
+        #if group too small, skip
+        if group_size < 4:
+            continue
         
-#         #fetch the data for this group
-#         group_genders = df.loc[group_mask, 'Gender']
-#         #Count number of males and females
-#         n_males = (group_genders == 'Male').sum()
-#         n_females = (group_genders == 'Female').sum()
+        #fetch the data for this group
+        group_genders = pd.loc[group_mask, 'Gender']
+        #Count number of males and females
+        n_males = (group_genders == 'Male').sum()
+        n_females = (group_genders == 'Female').sum()
         
-#         #isolation logic
-#         if n_females == 1 and n_males > 1:
-#             isolation_dict[int(label)] = 'female_isolated'
+        #isolation logic
+        if n_females == 1 and n_males > 1:
+            isolation_dict[int(label)] = 'female_isolated'
             
-#         # Condition B: Male Isolated (1 Male, > 1 Females)
-#         elif n_males == 1 and n_females > 1:
-#             isolation_dict[int(label)] = 'male_isolated'
+        # Condition B: Male Isolated (1 Male, > 1 Females)
+        elif n_males == 1 and n_females > 1:
+            isolation_dict[int(label)] = 'male_isolated'
             
-#     return isolation_dict
+    return isolation_dict
 
 
 # def check_diversity_isolation(df: pd.DataFrame, labels: np.ndarray) -> Dict[int, str]:
@@ -570,112 +570,112 @@ def visualize_clustering_with_centroids(
 #     # TODO: Return dictionary of isolated groups
 #     pass
 
-# #Still have to fix
-# def fix_gender_isolation(
-#     df: pd.DataFrame,
-#     labels: np.ndarray,
-#     distance_matrix: np.ndarray,
-#     isolated_groups: Dict[int, str]
-# ) -> np.ndarray:
-#     """
-#     Fix gender isolation by swapping students to ensuring no one is the 'only one' 
-#     of their gender in a group > 3.
-#     """
-#     labels = labels.copy() # Work on a copy to avoid accidental side effects
+
+def fix_gender_isolation(
+    df: pd.DataFrame,
+    labels: np.ndarray,
+    distance_matrix: np.ndarray,
+    isolated_groups: Dict[int, str]
+) -> np.ndarray:
+    """
+    Fix gender isolation by swapping students to ensuring no one is the 'only one' 
+    of their gender in a group > 3.
+    """
+    labels = labels.copy() # Work on a copy to avoid accidental side effects
     
-#     # Iterate through each group that was flagged as isolated
-#     for group_id, isolation_type in isolated_groups.items():
+    # Iterate through each group that was flagged as isolated
+    for group_id, isolation_type in isolated_groups.items():
         
-#         # 1. SETUP: Determine what we need to find and what we need to give away
-#         # ---------------------------------------------------------------------
-#         target_gender = None   # The gender we need to BRING IN
-#         swap_out_gender = None # The gender we need to SEND OUT
+        # 1. SETUP: Determine what we need to find and what we need to give away
+        # ---------------------------------------------------------------------
+        target_gender = None   # The gender we need to BRING IN
+        swap_out_gender = None # The gender we need to SEND OUT
         
-#         if isolation_type == 'female_isolated':
-#             # Group has 1 Female, many Males. 
-#             # We need another Female. We will trade away a Male.
-#             target_gender = 'Female'
-#             swap_out_gender = 'Male'
-#         elif isolation_type == 'male_isolated':
-#             # Group has 1 Male, many Females.
-#             # We need another Male. We will trade away a Female.
-#             target_gender = 'Male'
-#             swap_out_gender = 'Female'
+        if isolation_type == 'female_isolated':
+            # Group has 1 Female, many Males. 
+            # We need another Female. We will trade away a Male.
+            target_gender = 'Female'
+            swap_out_gender = 'Male'
+        elif isolation_type == 'male_isolated':
+            # Group has 1 Male, many Females.
+            # We need another Male. We will trade away a Female.
+            target_gender = 'Male'
+            swap_out_gender = 'Female'
             
-#         # Get indices of students currently in this isolated group
-#         current_group_indices = np.where(labels == group_id)[0]
+        # Get indices of students currently in this isolated group
+        current_group_indices = np.where(labels == group_id)[0]
         
-#         # Identify the candidates IN THIS GROUP who can be swapped out
-#         # (e.g., if we need a Female, we look for a Male to swap out)
-#         candidates_to_swap_out = [
-#             idx for idx in current_group_indices 
-#             if df.iloc[idx]['Gender'] == swap_out_gender
-#         ]
+        # Identify the candidates IN THIS GROUP who can be swapped out
+        # (e.g., if we need a Female, we look for a Male to swap out)
+        candidates_to_swap_out = [
+            idx for idx in current_group_indices 
+            if df.iloc[idx]['Gender'] == swap_out_gender
+        ]
         
-#         if not candidates_to_swap_out:
-#             continue # Should not happen if check_gender_isolation is correct, but safety first
+        if not candidates_to_swap_out:
+            continue # Should not happen if check_gender_isolation is correct, but safety first
 
-#         # 2. FIND A DONOR: Look for the best swap from other groups
-#         # ---------------------------------------------------------------------
-#         best_swap = None
-#         min_cost = float('inf')
+        # 2. FIND A DONOR: Look for the best swap from other groups
+        # ---------------------------------------------------------------------
+        best_swap = None
+        min_cost = float('inf')
         
-#         unique_labels = np.unique(labels)
+        unique_labels = np.unique(labels)
         
-#         for donor_group_id in unique_labels:
-#             if donor_group_id == group_id:
-#                 continue # Cannot swap with self
+        for donor_group_id in unique_labels:
+            if donor_group_id == group_id:
+                continue # Cannot swap with self
             
-#             # Get donor group members
-#             donor_indices = np.where(labels == donor_group_id)[0]
-#             donor_genders = df.iloc[donor_indices]['Gender']
+            # Get donor group members
+            donor_indices = np.where(labels == donor_group_id)[0]
+            donor_genders = df.iloc[donor_indices]['Gender']
             
-#             # CHECK: Does this donor group have enough of the target gender?
-#             # We generally only want to take from a group if they have > 2 of that gender,
-#             # so we don't accidentally create a NEW isolation problem there.
-#             count_target = (donor_genders == target_gender).sum()
+            # CHECK: Does this donor group have enough of the target gender?
+            # We generally only want to take from a group if they have > 2 of that gender,
+            # so we don't accidentally create a NEW isolation problem there.
+            count_target = (donor_genders == target_gender).sum()
             
-#             if count_target > 2: # Safe to take one
+            if count_target > 2: # Safe to take one
                 
-#                 # Identify candidates in the DONOR group who are the target gender
-#                 candidates_to_bring_in = [
-#                     idx for idx in donor_indices 
-#                     if df.iloc[idx]['Gender'] == target_gender
-#                 ]
+                # Identify candidates in the DONOR group who are the target gender
+                candidates_to_bring_in = [
+                    idx for idx in donor_indices 
+                    if df.iloc[idx]['Gender'] == target_gender
+                ]
                 
-#                 # 3. CALCULATE COST: Find the pair with minimum distance
-#                 # -------------------------------------------------------------
-#                 # We want the student coming IN to be similar to the students currently 
-#                 # in the isolated group.
+                # 3. CALCULATE COST: Find the pair with minimum distance
+                # -------------------------------------------------------------
+                # We want the student coming IN to be similar to the students currently 
+                # in the isolated group.
                 
-#                 for candidate_in in candidates_to_bring_in:
-#                     # Calculate average distance from this candidate to the REST of the isolated group
-#                     # (excluding the person we are swapping out)
+                for candidate_in in candidates_to_bring_in:
+                    # Calculate average distance from this candidate to the REST of the isolated group
+                    # (excluding the person we are swapping out)
                     
-#                     # Simple heuristic: Just minimize the distance between the IN and OUT students
-#                     # (This is often sufficient and faster than full group centroid recalc)
-#                     for candidate_out in candidates_to_swap_out:
+                    # Simple heuristic: Just minimize the distance between the IN and OUT students
+                    # (This is often sufficient and faster than full group centroid recalc)
+                    for candidate_out in candidates_to_swap_out:
                         
-#                         # Distance between the student leaving and student entering
-#                         # Lower distance = they are similar = less disruption to group chemistry
-#                         dist = distance_matrix[candidate_in, candidate_out]
+                        # Distance between the student leaving and student entering
+                        # Lower distance = they are similar = less disruption to group chemistry
+                        dist = distance_matrix[candidate_in, candidate_out]
                         
-#                         if dist < min_cost:
-#                             min_cost = dist
-#                             best_swap = (candidate_in, candidate_out, donor_group_id)
+                        if dist < min_cost:
+                            min_cost = dist
+                            best_swap = (candidate_in, candidate_out, donor_group_id)
 
-#         # 4. EXECUTE SWAP
-#         # ---------------------------------------------------------------------
-#         if best_swap:
-#             student_in, student_out, donor_id = best_swap
+        # 4. EXECUTE SWAP
+        # ---------------------------------------------------------------------
+        if best_swap:
+            student_in, student_out, donor_id = best_swap
             
-#             # Perform the swap in the labels array
-#             labels[student_in] = group_id   # Move donor student to isolated group
-#             labels[student_out] = donor_id  # Move isolated group student to donor group
+            # Perform the swap in the labels array
+            labels[student_in] = group_id   # Move donor student to isolated group
+            labels[student_out] = donor_id  # Move isolated group student to donor group
             
-#             print(f"Fixed {isolation_type} in Group {group_id}: Swapped {student_in} (from G{donor_id}) with {student_out}")
+            print(f"Fixed {isolation_type} in Group {group_id}: Swapped {student_in} (from G{donor_id}) with {student_out}")
             
-#     return labels
+    return labels
 
 
 def fix_diversity_isolation(
