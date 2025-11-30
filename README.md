@@ -7,7 +7,7 @@ GroupGen is a machine learning pipeline designed to form student groups that are
 The project is divided into two distinct phases:
 
 1.  **Evaluation & Research:** A comparative analysis ("Tournament") of K-Means vs. K-Medoids using Euclidean, Manhattan, and Gower distances to determine the optimal algorithm.
-2.  **Implementation:** The production pipeline that uses the winning algorithm (K-Medoids Manhattan) to generate actual student groups with "Smart Fill" logistics and Diversity Locking.
+2.  **Implementation:** The production pipeline that uses the winning algorithm (K-Medoids Manhattan) to generate actual student groups.
 
 ```
 GroupGen/
