@@ -20,7 +20,7 @@ def kmedoids_pam(
     K: int,
     random_state: Optional[int] = None,
     max_iter: int = 200
-) -> Tuple[np.ndarray, np.ndarray]:
+):
     """
     Simple PAM (Partitioning Around Medoids) implementation.
 

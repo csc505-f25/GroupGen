@@ -377,7 +377,7 @@ def visualize_feature_pairs(
     feature_pairs = [
         ('Motivation', 'Self_Esteem'),
         ('Motivation', 'Work_Ethic'),
-        ('Self_Esteem', 'Work_Ethic') # Will be replaced with 3D or different view
+        ('Self_Esteem', 'Work_Ethic') 
     ]
     
     for idx, (feat1, feat2) in enumerate(feature_pairs[:3]):
@@ -606,7 +606,6 @@ def fix_gender_isolation(
         current_group_indices = np.where(labels == group_id)[0]
         
         # Identify the candidates IN THIS GROUP who can be swapped out
-        # (e.g., if we need a Female, we look for a Male to swap out)
         candidates_to_swap_out = [
             idx for idx in current_group_indices 
             if df.iloc[idx]['Gender'] == swap_out_gender

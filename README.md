@@ -36,6 +36,22 @@ git clone https://github.com/yourusername/GroupGen.git
 cd GroupGen
 ```
 
+## Install Virtual environment
+
+### Windows
+python -m venv venv
+
+### Mac/Linux
+python3 -m venv venv
+
+## Activate Virtual enviroment
+
+### Windows
+.\venv\Scripts\activate
+
+### Mac/Linux
+source venv/bin/activate
+
 
 ## Install dependencies:
 
@@ -112,6 +128,3 @@ The system expects a CSV file with the following columns
 | `Learning_Style` | String | Visual, Auditory, Kinesthetic |
 | `Diversity` | String | Race/Ethnicity category |
 
-## License
-
-[Your License Here]

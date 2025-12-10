@@ -3,42 +3,162 @@
 FINAL GROUP ASSIGNMENTS REPORT
 =================================================================
 
-📂 GROUP 1 (4 students)
+ GROUP 1 (10 students)
 -----------------------------------------------------------------
 Name                 | Gender   | Ethnicity            | Style     
 -----------------------------------------------------------------
-Emory Salaun         | Male     | Caucasian            | Kinesthetic
-Kye Farhadi          | Male     | Asian                | Kinesthetic
-Shaun Wallace        | Male     | Caucasian            | Kinesthetic
-Thierno              | Male     | Black/African        | Kinesthetic
+Student_003          | Male     | Hispanic             | Kinesthetic
+Student_018          | Female   | Hispanic             | Kinesthetic
+Student_027          | Male     | White American       | Kinesthetic
+Student_048          | Female   | Asian American       | Kinesthetic
+Student_054          | Female   | Hispanic             | Kinesthetic
+Student_057          | Male     | Black American       | Kinesthetic
+Student_075          | Male     | White American       | Kinesthetic
+Student_087          | Male     | White American       | Kinesthetic
+Student_096          | Female   | Asian American       | Kinesthetic
+Student_099          | Male     | White American       | Kinesthetic
 -----------------------------------------------------------------
 
-📂 GROUP 2 (4 students)
+ GROUP 2 (10 students)
 -----------------------------------------------------------------
 Name                 | Gender   | Ethnicity            | Style     
 -----------------------------------------------------------------
-Brennon Pafume       | Male     | Caucasian            | Auditory  
-Liam Washburn        | Male     | Caucasian            | Kinesthetic
-Lily Nguyen          | Female   | Asian                | Visual    
-Nadia Sutyrina       | Female   | Caucasian            | Visual    
+Student_004          | Female   | Black American       | Visual    
+Student_021          | Male     | Black American       | Kinesthetic
+Student_025          | Male     | Black American       | Visual    
+Student_037          | Male     | Black American       | Visual    
+Student_061          | Male     | Black American       | Visual    
+Student_063          | Male     | White American       | Kinesthetic
+Student_070          | Female   | Hispanic             | Visual    
+Student_071          | Male     | White American       | Auditory  
+Student_076          | Female   | Asian American       | Visual    
+Student_094          | Female   | Hispanic             | Visual    
 -----------------------------------------------------------------
 
-📂 GROUP 3 (4 students)
+ GROUP 3 (10 students)
 -----------------------------------------------------------------
 Name                 | Gender   | Ethnicity            | Style     
 -----------------------------------------------------------------
-Aidan Leach          | Male     | Caucasian            | Visual    
-Ben Dahrooge         | Male     | Caucasian            | Visual    
-Dominic Tucchio      | Male     | Caucasian            | Visual    
-Peter Finch          | Male     | Caucasian            | Visual    
+Student_007          | Male     | Hispanic             | Visual    
+Student_024          | Female   | White American       | Kinesthetic
+Student_031          | Male     | White American       | Visual    
+Student_034          | Female   | Hispanic             | Visual    
+Student_045          | Male     | Black American       | Kinesthetic
+Student_051          | Male     | White American       | Kinesthetic
+Student_060          | Female   | Asian American       | Kinesthetic
+Student_067          | Male     | White American       | Visual    
+Student_084          | Female   | Asian American       | Kinesthetic
+Student_085          | Male     | Black American       | Visual    
 -----------------------------------------------------------------
 
-📂 GROUP 4 (4 students)
+ GROUP 4 (10 students)
 -----------------------------------------------------------------
 Name                 | Gender   | Ethnicity            | Style     
 -----------------------------------------------------------------
-Emily Light          | Female   | Caucasian            | Visual    
-Jack Lanoie          | Male     | Caucasian            | Visual    
-Jenny You            | Female   | Asian                | Visual    
-Ryan Brooks          | Male     | Caucasian            | Visual    
+Student_038          | Female   | Hispanic             | Auditory  
+Student_040          | Female   | Asian American       | Visual    
+Student_043          | Male     | White American       | Visual    
+Student_044          | Female   | Asian American       | Auditory  
+Student_047          | Male     | White American       | Auditory  
+Student_056          | Female   | Asian American       | Auditory  
+Student_073          | Male     | Black American       | Visual    
+Student_079          | Male     | White American       | Visual    
+Student_082          | Female   | Hispanic             | Visual    
+Student_091          | Male     | White American       | Visual    
+-----------------------------------------------------------------
+
+ GROUP 5 (10 students)
+-----------------------------------------------------------------
+Name                 | Gender   | Ethnicity            | Style     
+-----------------------------------------------------------------
+Student_023          | Male     | Asian American       | Auditory  
+Student_035          | Male     | White American       | Auditory  
+Student_074          | Female   | Hispanic             | Auditory  
+Student_077          | Male     | Black American       | Auditory  
+Student_080          | Female   | Asian American       | Auditory  
+Student_083          | Male     | White American       | Auditory  
+Student_086          | Female   | Hispanic             | Auditory  
+Student_089          | Male     | Black American       | Auditory  
+Student_095          | Male     | White American       | Auditory  
+Student_098          | Female   | Hispanic             | Auditory  
+-----------------------------------------------------------------
+
+ GROUP 6 (10 students)
+-----------------------------------------------------------------
+Name                 | Gender   | Ethnicity            | Style     
+-----------------------------------------------------------------
+Student_002          | Female   | Asian American       | Auditory  
+Student_006          | Female   | Asian American       | Kinesthetic
+Student_012          | Female   | White American       | Kinesthetic
+Student_015          | Male     | Asian American       | Kinesthetic
+Student_020          | Female   | White American       | Auditory  
+Student_026          | Female   | Hispanic             | Auditory  
+Student_029          | Male     | Black American       | Auditory  
+Student_033          | Male     | Black American       | Kinesthetic
+Student_059          | Male     | White American       | Auditory  
+Student_062          | Female   | Hispanic             | Auditory  
+-----------------------------------------------------------------
+
+ GROUP 7 (10 students)
+-----------------------------------------------------------------
+Name                 | Gender   | Ethnicity            | Style     
+-----------------------------------------------------------------
+Student_009          | Male     | Black American       | Kinesthetic
+Student_036          | Female   | Asian American       | Kinesthetic
+Student_039          | Male     | White American       | Kinesthetic
+Student_042          | Female   | Hispanic             | Kinesthetic
+Student_069          | Male     | Black American       | Kinesthetic
+Student_072          | Female   | Asian American       | Kinesthetic
+Student_078          | Female   | Hispanic             | Kinesthetic
+Student_081          | Male     | Black American       | Kinesthetic
+Student_090          | Female   | Hispanic             | Kinesthetic
+Student_093          | Male     | Black American       | Kinesthetic
+-----------------------------------------------------------------
+
+ GROUP 8 (10 students)
+-----------------------------------------------------------------
+Name                 | Gender   | Ethnicity            | Style     
+-----------------------------------------------------------------
+Student_005          | Male     | White American       | Auditory  
+Student_008          | Female   | White American       | Auditory  
+Student_011          | Male     | Hispanic             | Auditory  
+Student_014          | Female   | Hispanic             | Auditory  
+Student_017          | Male     | Black American       | Auditory  
+Student_030          | Female   | Hispanic             | Kinesthetic
+Student_050          | Female   | Hispanic             | Auditory  
+Student_053          | Male     | Black American       | Auditory  
+Student_066          | Female   | Hispanic             | Kinesthetic
+Student_092          | Female   | Asian American       | Auditory  
+-----------------------------------------------------------------
+
+ GROUP 9 (10 students)
+-----------------------------------------------------------------
+Name                 | Gender   | Ethnicity            | Style     
+-----------------------------------------------------------------
+Student_013          | Male     | Black American       | Visual    
+Student_016          | Female   | White American       | Visual    
+Student_032          | Female   | Asian American       | Auditory  
+Student_041          | Male     | Black American       | Auditory  
+Student_049          | Male     | Black American       | Visual    
+Student_052          | Female   | Asian American       | Visual    
+Student_055          | Male     | White American       | Visual    
+Student_058          | Female   | Hispanic             | Visual    
+Student_065          | Male     | Black American       | Auditory  
+Student_068          | Female   | Asian American       | Auditory  
+-----------------------------------------------------------------
+
+ GROUP 10 (10 students)
+-----------------------------------------------------------------
+Name                 | Gender   | Ethnicity            | Style     
+-----------------------------------------------------------------
+Student_001          | Male     | White American       | Visual    
+Student_010          | Female   | Asian American       | Visual    
+Student_019          | Male     | Asian American       | Visual    
+Student_022          | Female   | Hispanic             | Visual    
+Student_028          | Female   | Asian American       | Visual    
+Student_046          | Female   | Hispanic             | Visual    
+Student_064          | Female   | Asian American       | Visual    
+Student_088          | Female   | Asian American       | Visual    
+Student_097          | Male     | Black American       | Visual    
+Student_100          | Female   | Asian American       | Visual    
 -----------------------------------------------------------------

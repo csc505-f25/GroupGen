@@ -5,7 +5,7 @@ from pathlib import Path
 # Imports
 from .data_loader import load_student_data, preprocess_data
 from .clustering import (
-    compute_feature_vector, compute_distance_matrix, enforce_group_size, check_gender_isolation, fix_gender_isolation)
+    compute_feature_vector, compute_distance_matrix, enforce_group_size, check_gender_isolation, fix_gender_isolation, kmeans_custom)
 from .kmedoids import kmedoids_pam
 
 
@@ -56,6 +56,13 @@ def run_grouping_pipeline(df: pd.DataFrame, n_groups: int, target_size: int) -> 
         n_groups, 
         random_state=42
     )
+    # labels, centroids = kmeans_custom(
+    #     x= feature_matrix,                # REPLACE 'X' with your actual data array
+    #     K=n_groups, 
+    #     random_state=42,
+    #     metric='euclidean',
+    #     return_centroids=True
+    # )
 
     # Logistics (Smart Fill)
     print(f"   > [Step 3] Enforcing Group Size (Target: {target_size})...")
@@ -133,7 +140,7 @@ def save_results(df: pd.DataFrame, labels: np.ndarray, output_file: str):
             group_data = df_clean[df_clean['Group_ID'] == g_id]
             
             # Header
-            write_line(f"\n📂 GROUP {g_id} ({len(group_data)} students)")
+            write_line(f"\n GROUP {g_id} ({len(group_data)} students)")
             write_line("-" * 65)
             
             # Column Headers
@@ -167,7 +174,8 @@ def main():
     print("="*60)
 
     # Configuration
-    INPUT_CSV = "backend/data/actual_students.csv"
+    INPUT_CSV = "backend/data/sample_students.csv"
+    # INPUT_CSV = "backend/data/actual_students.csv"
     OUTPUT_CSV = "backend/output/final_groups.csv"
 
     # 1. Load Data
