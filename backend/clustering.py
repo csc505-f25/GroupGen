@@ -14,12 +14,14 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import gower
 from typing import List, Dict, Tuple, Optional
-from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.metrics import pairwise_distances
 from sklearn.decomposition import PCA
-from sklearn.preprocessing import OneHotEncoder
 from .kmedoids import kmedoids_pam
 
+# ==========================================
+# 1. Feature Engineering & Distances
+# ==========================================
 
 def enforce_group_size(
     labels: np.ndarray, 
@@ -142,6 +144,9 @@ def compute_distance_matrix(df, feature_matrix):
 
     return eucdistance_matrix, mandistance_matrix, gower_distance_matrix
 
+# ==========================================
+# 2. Clustering Algorithms
+# ==========================================
 
 def kmeans_custom(
     x: np.ndarray, 
@@ -171,7 +176,6 @@ def kmeans_custom(
     # Random initialization of centroids
     idxs = np.random.choice(x.shape[0], K, replace=False)
     centroids = np.atleast_2d(x[idxs].copy())  # ensures centroids is always 2D
-
     prev = np.full(x.shape[0], -1, dtype=int)
 
     for iteration in range(max_iter):
@@ -544,33 +548,6 @@ def check_gender_isolation(pd, labels):
             
     return isolation_dict
 
-
-# def check_diversity_isolation(df: pd.DataFrame, labels: np.ndarray) -> Dict[int, str]:
-#     """
-#     Check if any group has diversity isolation (e.g., all white and one black).
-    
-#     Args:
-#         df: DataFrame with student data (must have 'Diversity' column)
-#         labels: Cluster labels for each student
-        
-#     Returns:
-#         Dictionary mapping group_id to isolation_type
-#         Example: {3: 'black_isolated'} means group 3 has one black student isolated
-        
-#     TODO: Implement diversity isolation detection
-#     - For each group, count diversity categories
-#     - If a group has only 1 student of a particular diversity category and others are different,
-#       mark that category as isolated
-#     - Return dictionary of isolated groups with their isolated category
-#     """
-#     # TODO: For each unique cluster label:
-#     #   - Count diversity categories in that group
-#     #   - For each diversity category, if count == 1 and total group size > 1:
-#     #     - Mark as '{category}_isolated'
-#     # TODO: Return dictionary of isolated groups
-#     pass
-
-
 def fix_gender_isolation(
     df: pd.DataFrame,
     labels: np.ndarray,
@@ -677,44 +654,74 @@ def fix_gender_isolation(
     return labels
 
 
-def fix_diversity_isolation(
-    df: pd.DataFrame,
-    labels: np.ndarray,
-    distance_matrix: np.ndarray,
-    isolated_groups: Dict[int, str]
-) -> np.ndarray:
+def check_diversity_isolation(df: pd.DataFrame, labels: np.ndarray) -> Dict[int, str]:
     """
-    Fix diversity isolation by moving students to ensure no one is alone.
-    
-    Strategy:
-    - If a group has one student of a diversity category isolated, find another
-      student of the same category from another group and add them to the isolated group
-    - Or swap with a student from the isolated group
-    
-    Args:
-        df: DataFrame with student data
-        labels: Current cluster labels
-        distance_matrix: Distance matrix for finding good swaps
-        isolated_groups: Dictionary of isolated groups from check_diversity_isolation()
-        
-    Returns:
-        Updated cluster labels
-        
-    TODO: Implement diversity isolation fixing
-    - For each isolated group:
-    #   - Identify the isolated student and their diversity category
-    #   - Find another student of same diversity category from a different group
-    #   - Move that student to the isolated group (or swap)
-    #   - Consider distance when choosing which student to move
-    # TODO: Return updated labels
+    Check if any group has diversity isolation (e.g., 1 Black student in a group of 4).
     """
-    # TODO: For each isolated group:
-    #   - Identify the isolated student and their diversity category
-    #   - Find another student of same diversity category from a different group
-    #   - Move them to the isolated group (try to minimize distance increase)
-    # TODO: Return updated labels
-    pass
+    isolation_dict = {}
+    unique_labels = np.unique(labels)
+    
+    for label in unique_labels:
+        group_mask = (labels == label)
+        if group_mask.sum() < 3: continue
+            
+        group_diversity = df.loc[group_mask, 'Diversity']
+        counts = group_diversity.value_counts()
+        
+        # If a category appears exactly ONCE, flag it
+        for category, count in counts.items():
+            if count == 1:
+                isolation_dict[int(label)] = category
+                break # Handle one isolation per group at a time
+                
+    return isolation_dict
 
+
+def fix_diversity_isolation(df: pd.DataFrame, labels: np.ndarray, distance_matrix: np.ndarray, isolated_groups: Dict[int, str]) -> np.ndarray:
+    """
+    Fix diversity isolation by finding a donor group with EXTRA students of that category.
+    """
+    labels = labels.copy()
+    unique_labels = np.unique(labels)
+    
+    for group_id, target_category in isolated_groups.items():
+        
+        current_indices = np.where(labels == group_id)[0]
+        # We need to swap OUT someone who is NOT the target category
+        candidates_out = [i for i in current_indices if df.iloc[i]['Diversity'] != target_category]
+        
+        if not candidates_out: continue
+            
+        best_swap = None
+        min_cost = float('inf')
+        
+        for donor_id in unique_labels:
+            if donor_id == group_id: continue
+            
+            donor_indices = np.where(labels == donor_id)[0]
+            donor_diversity = df.iloc[donor_indices]['Diversity']
+            
+            # Donor must have >1 of this category. 
+            # (If they have 2, and we take 1, they have 1 left. This is a trade-off. 
+            # ideally >2, but for diversity categories, >1 is often the best we can find).
+            if (donor_diversity == target_category).sum() > 1:
+                
+                candidates_in = [i for i in donor_indices if df.iloc[i]['Diversity'] == target_category]
+                
+                for c_in in candidates_in:
+                    for c_out in candidates_out:
+                        dist = distance_matrix[c_in, c_out]
+                        if dist < min_cost:
+                            min_cost = dist
+                            best_swap = (c_in, c_out, donor_id)
+        
+        if best_swap:
+            s_in, s_out, d_id = best_swap
+            labels[s_in] = group_id
+            labels[s_out] = d_id
+            print(f"Fixed Diversity ({target_category}) in G{group_id}: Swapped {s_in} with {s_out}")
+            
+    return labels
 
 def form_balanced_groups(
     df: pd.DataFrame,
@@ -726,57 +733,38 @@ def form_balanced_groups(
 ) -> Tuple[pd.DataFrame, Dict[int, List[str]]]:
     """
     Main function to form balanced student groups with locking mechanisms.
-    
-    Steps:
-    1. Compute feature vectors and distance matrix
-    2. Perform initial clustering
-    3. Check for gender isolation and fix if needed
-    4. Check for diversity isolation and fix if needed
-    5. Return final group assignments
-    
-    Args:
-        df: DataFrame with student data
-        n_groups: Number of groups to form
-        random_state: Random seed
-        enforce_gender_balance: Whether to enforce gender balance
-        enforce_diversity_balance: Whether to enforce diversity balance
-        visualize: Whether to visualize clustering results
-        
-    Returns:
-        Tuple of (DataFrame with Group column added, Dictionary mapping group_id to student names)
-        
-    TODO: Implement the complete workflow
-    - Call compute_feature_vector() to get features
-    - Call compute_distance_matrix() to get distances
-    - Call initial_clustering() to get initial groups
-    - If enforce_gender_balance: check and fix gender isolation
-    - If enforce_diversity_balance: check and fix diversity isolation
-    - Add 'Group' column to dataframe (groups numbered 1, 2, 3, ...)
-    - Create dictionary mapping group_id to list of student names
-    - Return results
     """
     # Step 1: Compute feature vectors
     feature_matrix = compute_feature_vector(df)
     
-    # Step 2: Compute distance matrix (needed for isolation fixing)
-    distance_matrix = compute_distance_matrix(feature_matrix)
+    # Step 2: Compute distance matrices
+    # CRITICAL FIX: We must unpack the 3 return values.
+    # We need 'euc_dist' for the swapping logic (to find closest match)
+    # We need 'man_dist' implicitly if we were running K-Medoids here, 
+    # but initial_clustering usually handles its own distance calc unless passed.
+    euc_dist, _, _ = compute_distance_matrix(df, feature_matrix)
     
     # Step 3: Initial clustering using K-Means
+    # (Note: If you want K-Medoids here, you should swap this call, 
+    # but for now we stick to the default initial_clustering function)
     labels = initial_clustering(feature_matrix, n_groups, random_state, visualize=visualize, df=df)
     
-    # # Step 4: Check and fix gender isolation
-    # if enforce_gender_balance:
-    #     isolated_groups = check_gender_isolation(df, labels)
-    #     if isolated_groups:
-    #         labels = fix_gender_isolation(df, labels, distance_matrix, isolated_groups)
+    # Step 4: Check and fix gender isolation
+    if enforce_gender_balance:
+        isolated_groups = check_gender_isolation(df, labels)
+        if isolated_groups:
+            print(f"   > Found gender isolation in groups: {list(isolated_groups.keys())}. Fixing...")
+            # We pass 'euc_dist' here because the swap logic needs to know who is closest
+            labels = fix_gender_isolation(df, labels, euc_dist, isolated_groups)
     
-    # # Step 5: Check and fix diversity isolation
-    # if enforce_diversity_balance:
-    #     isolated_groups = check_diversity_isolation(df, labels)
-    #     if isolated_groups:
-    #         labels = fix_diversity_isolation(df, labels, distance_matrix, isolated_groups)
+    # Step 5: Check and fix diversity isolation
+    if enforce_diversity_balance:
+        isolated_groups = check_diversity_isolation(df, labels)
+        if isolated_groups:
+            print(f"   > Found diversity isolation in groups: {list(isolated_groups.keys())}. Fixing...")
+            labels = fix_diversity_isolation(df, labels, euc_dist, isolated_groups)
     
-    # Step 6: Add Group column to dataframe (labels + 1 to make groups 1-indexed)
+    # Step 6: Add Group column to dataframe (1-indexed)
     result_df = df.copy()
     result_df['Group'] = labels + 1
     

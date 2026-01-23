@@ -162,8 +162,4 @@ def plot_skill_variance(results, save_path=None):
 
     plt.tight_layout()
 
-    # if save_path:
-    #     plt.savefig(save_path, dpi=150, bbox_inches='tight')
-    #     print(f"Skill variance plot saved to: {save_path}")S
-
     plt.show()

@@ -4,8 +4,10 @@ from pathlib import Path
 
 # Imports
 from .data_loader import load_student_data, preprocess_data
-from .clustering import (
-    compute_feature_vector, compute_distance_matrix, enforce_group_size, check_gender_isolation, fix_gender_isolation, kmeans_custom)
+from .clustering import (compute_feature_vector, compute_distance_matrix, enforce_group_size, check_gender_isolation, fix_gender_isolation, kmeans_custom,
+    check_diversity_isolation,  # <-- Added
+    fix_diversity_isolation     # <-- Added
+)
 from .kmedoids import kmedoids_pam
 
 
@@ -47,7 +49,7 @@ def run_grouping_pipeline(df: pd.DataFrame, n_groups: int, target_size: int) -> 
     # Feature Engineering
     print("   > [Step 1] Computing Features & Distances...")
     feature_matrix = compute_feature_vector(df)
-    _, dist_manhattan, _ = compute_distance_matrix(df, feature_matrix)
+    euc_dist, dist_manhattan, _ = compute_distance_matrix(df, feature_matrix)
 
     # Clustering K-Medoids Manhattan
     print("   > [Step 2] Clustering (K-Medoids Manhattan)...")
@@ -56,13 +58,6 @@ def run_grouping_pipeline(df: pd.DataFrame, n_groups: int, target_size: int) -> 
         n_groups, 
         random_state=42
     )
-    # labels, centroids = kmeans_custom(
-    #     x= feature_matrix,                # REPLACE 'X' with your actual data array
-    #     K=n_groups, 
-    #     random_state=42,
-    #     metric='euclidean',
-    #     return_centroids=True
-    # )
 
     # Logistics (Smart Fill)
     print(f"   > [Step 3] Enforcing Group Size (Target: {target_size})...")
@@ -73,15 +68,17 @@ def run_grouping_pipeline(df: pd.DataFrame, n_groups: int, target_size: int) -> 
         metric='manhattan' 
     )
 
-    # D. Constraints (Locking System)
+    # 4. Gender Constraints
     print("   > [Step 4] Optimizing Gender Balance...")
-    isolated_g= check_gender_isolation(df, labels)
-    labels = fix_gender_isolation(
-        df, 
-        labels, 
-        dist_manhattan,
-        isolated_g
-    )
+    isolated_gender = check_gender_isolation(df, labels)
+    if isolated_gender:
+        labels = fix_gender_isolation(df, labels, euc_dist, isolated_gender)
+
+    # 5. Diversity Constraints (NEW STEP)
+    print("   > [Step 5] Optimizing Diversity Balance...")
+    isolated_diversity = check_diversity_isolation(df, labels)
+    if isolated_diversity:
+        labels = fix_diversity_isolation(df, labels, euc_dist, isolated_diversity)
     
     return labels
 
@@ -174,8 +171,8 @@ def main():
     print("="*60)
 
     # Configuration
-    INPUT_CSV = "backend/data/sample_students.csv"
-    # INPUT_CSV = "backend/data/actual_students.csv"
+    INPUT_CSV = "backend/data/sample_students100.csv"
+    #INPUT_CSV = "backend/data/actual_students.csv"
     OUTPUT_CSV = "backend/output/final_groups.csv"
 
     # 1. Load Data
