@@ -29,10 +29,8 @@ def kmedoids_pam(
     actual data points, making results more interpretable.
 
     Args:
-        X: NxM feature matrix (numeric)
+        X: NxN distance matrix (numeric). X[i, j] represents the distance between point i and j.
         K: Number of medoids/clusters
-        distance_metric: Distance metric for pairwise_distances
-                        ('manhattan', 'euclidean', 'cosine', etc.)
         random_state: Seed for reproducibility
         max_iter: Maximum number of swap iterations
 

@@ -117,22 +117,6 @@ def preprocess_data(df):
     # Step 2: Make a copy for safe preprocessing
     df_cleaned = df.copy()
 
-
-      # Step 1: Check for missing values
-    missing = df.isnull()
-    if missing.any().any():
-        print("=== MISSING DATA FOUND ===")
-        for col in df.columns:
-            if missing[col].any():
-                missing_rows = df.index[missing[col]].tolist()
-                print(f"Column '{col}' has missing values at rows: {missing_rows}")
-    else:
-        print("No missing data found.")
-
-    # Step 2: Make a copy for safe preprocessing
-    df_cleaned = df.copy()
-
-
     # Step 3: Normalize categorical data
     # Normalize Gender
     df_cleaned["Gender"] = df_cleaned["Gender"].str.strip().str.capitalize()

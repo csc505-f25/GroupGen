@@ -1,14 +1,15 @@
 import pandas as pd
 import numpy as np
 from pathlib import Path
+import os
 
 # Imports
-from .data_loader import load_student_data, preprocess_data
-from .clustering import (compute_feature_vector, compute_distance_matrix, enforce_group_size, check_gender_isolation, fix_gender_isolation, kmeans_custom,
+from data_loader import load_student_data, preprocess_data
+from clustering import (compute_feature_vector, compute_distance_matrix, enforce_group_size, check_gender_isolation, fix_gender_isolation, kmeans_custom,
     check_diversity_isolation,  # <-- Added
     fix_diversity_isolation     # <-- Added
 )
-from .kmedoids import kmedoids_pam
+from kmedoids import kmedoids_pam
 
 
 # Configuration & Input
@@ -171,8 +172,12 @@ def main():
     print("="*60)
 
     # Configuration
-    INPUT_CSV = "backend/data/sample_students100.csv"
-    #INPUT_CSV = "backend/data/actual_students.csv"
+    #INPUT_CSV = "backend/data/sample_students.csv"
+     # Get the directory where THIS script (generate_groups.py) is located
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+    # Construct the full path specifically pointing to the data folder next to this script
+    INPUT_CSV = os.path.join(BASE_DIR, "data", "actual_students.csv")
     OUTPUT_CSV = "backend/output/final_groups.csv"
 
     # 1. Load Data

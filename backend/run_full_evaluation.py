@@ -14,7 +14,7 @@ Or from backend folder:
 import numpy as np
 import pandas as pd
 from pathlib import Path
-import gower
+import gower as gower
 from sklearn.metrics import silhouette_score
 from .data_loader import load_student_data, preprocess_data
 from .clustering import (
@@ -58,7 +58,7 @@ def run_full_evaluation(
 
     # Load and preprocess data
     print("\n Loading and preprocessing student data...")
-    data_file = Path(__file__).resolve().parent / "data" / "sample_students100.csv"
+    data_file = Path(__file__).resolve().parent / "data" / "sample_students.csv"
     df = load_student_data(str(data_file))
     df = preprocess_data(df)
     n_students = len(df)

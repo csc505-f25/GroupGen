@@ -7,218 +7,64 @@ FINAL GROUP ASSIGNMENTS REPORT
 -----------------------------------------------------------------
 Name                 | Gender   | Ethnicity            | Style     
 -----------------------------------------------------------------
-Student_007          | Male     | Hispanic             | Visual    
-Student_037          | Male     | Black American       | Visual    
-Student_061          | Male     | Black American       | Visual    
-Student_085          | Male     | Black American       | Visual    
-Student_094          | Female   | Hispanic             | Visual    
+Student_020          | Female   | White American       | Auditory  
+Student_023          | Male     | White American       | Auditory  
+Student_025          | Male     | Hispanic             | Kinesthetic
+Student_026          | Female   | Asian American       | Auditory  
+Student_029          | Male     | Hispanic             | Auditory  
 -----------------------------------------------------------------
 
  GROUP 2 (5 students)
 -----------------------------------------------------------------
 Name                 | Gender   | Ethnicity            | Style     
 -----------------------------------------------------------------
-Student_003          | Male     | Hispanic             | Kinesthetic
-Student_025          | Male     | Black American       | Visual    
-Student_027          | Male     | White American       | Kinesthetic
-Student_063          | Male     | White American       | Kinesthetic
-Student_070          | Female   | Hispanic             | Visual    
+Student_005          | Male     | Asian American       | Auditory  
+Student_008          | Female   | Hispanic             | Auditory  
+Student_011          | Male     | Black American       | Auditory  
+Student_014          | Female   | Asian American       | Auditory  
+Student_017          | Male     | White American       | Auditory  
 -----------------------------------------------------------------
 
  GROUP 3 (5 students)
 -----------------------------------------------------------------
 Name                 | Gender   | Ethnicity            | Style     
 -----------------------------------------------------------------
-Student_018          | Female   | Hispanic             | Kinesthetic
-Student_048          | Female   | Asian American       | Kinesthetic
-Student_051          | Male     | White American       | Kinesthetic
-Student_075          | Male     | White American       | Kinesthetic
-Student_096          | Female   | Asian American       | Kinesthetic
+Student_012          | Female   | Hispanic             | Visual    
+Student_015          | Male     | Black American       | Visual    
+Student_016          | Female   | Hispanic             | Kinesthetic
+Student_024          | Female   | Black American       | Visual    
+Student_027          | Male     | White American       | Visual    
 -----------------------------------------------------------------
 
  GROUP 4 (5 students)
 -----------------------------------------------------------------
 Name                 | Gender   | Ethnicity            | Style     
 -----------------------------------------------------------------
-Student_021          | Male     | Black American       | Kinesthetic
-Student_054          | Female   | Hispanic             | Kinesthetic
-Student_057          | Male     | Black American       | Kinesthetic
-Student_072          | Female   | Asian American       | Kinesthetic
-Student_099          | Male     | White American       | Kinesthetic
+Student_007          | Male     | White American       | Kinesthetic
+Student_009          | Male     | Asian American       | Visual    
+Student_018          | Female   | Asian American       | Visual    
+Student_021          | Male     | Hispanic             | Visual    
+Student_028          | Female   | Black American       | Kinesthetic
 -----------------------------------------------------------------
 
  GROUP 5 (5 students)
 -----------------------------------------------------------------
 Name                 | Gender   | Ethnicity            | Style     
 -----------------------------------------------------------------
-Student_009          | Male     | Black American       | Kinesthetic
-Student_015          | Male     | Asian American       | Kinesthetic
-Student_033          | Male     | Black American       | Kinesthetic
-Student_042          | Female   | Hispanic             | Kinesthetic
-Student_066          | Female   | Hispanic             | Kinesthetic
+Student_001          | Male     | White American       | Visual    
+Student_002          | Female   | Black American       | Auditory  
+Student_004          | Female   | White American       | Visual    
+Student_019          | Male     | Black American       | Kinesthetic
+Student_030          | Female   | Asian American       | Visual    
 -----------------------------------------------------------------
 
  GROUP 6 (5 students)
 -----------------------------------------------------------------
 Name                 | Gender   | Ethnicity            | Style     
 -----------------------------------------------------------------
-Student_008          | Female   | White American       | Auditory  
-Student_024          | Female   | White American       | Kinesthetic
-Student_045          | Male     | Black American       | Kinesthetic
-Student_084          | Female   | Asian American       | Kinesthetic
-Student_087          | Male     | White American       | Kinesthetic
------------------------------------------------------------------
-
- GROUP 7 (5 students)
------------------------------------------------------------------
-Name                 | Gender   | Ethnicity            | Style     
------------------------------------------------------------------
-Student_014          | Female   | Hispanic             | Auditory  
-Student_050          | Female   | Hispanic             | Auditory  
-Student_065          | Male     | Black American       | Auditory  
-Student_071          | Male     | White American       | Auditory  
-Student_092          | Female   | Asian American       | Auditory  
------------------------------------------------------------------
-
- GROUP 8 (5 students)
------------------------------------------------------------------
-Name                 | Gender   | Ethnicity            | Style     
------------------------------------------------------------------
-Student_011          | Male     | Hispanic             | Auditory  
-Student_017          | Male     | Black American       | Auditory  
-Student_032          | Female   | Asian American       | Auditory  
-Student_041          | Male     | Black American       | Auditory  
-Student_068          | Female   | Asian American       | Auditory  
------------------------------------------------------------------
-
- GROUP 9 (5 students)
------------------------------------------------------------------
-Name                 | Gender   | Ethnicity            | Style     
------------------------------------------------------------------
-Student_005          | Male     | White American       | Auditory  
-Student_022          | Female   | Hispanic             | Visual    
-Student_049          | Male     | Black American       | Visual    
-Student_053          | Male     | Black American       | Auditory  
-Student_064          | Female   | Asian American       | Visual    
------------------------------------------------------------------
-
- GROUP 10 (5 students)
------------------------------------------------------------------
-Name                 | Gender   | Ethnicity            | Style     
------------------------------------------------------------------
-Student_035          | Male     | White American       | Auditory  
-Student_044          | Female   | Asian American       | Auditory  
-Student_055          | Male     | White American       | Visual    
-Student_093          | Male     | Black American       | Kinesthetic
-Student_098          | Female   | Hispanic             | Auditory  
------------------------------------------------------------------
-
- GROUP 11 (5 students)
------------------------------------------------------------------
-Name                 | Gender   | Ethnicity            | Style     
------------------------------------------------------------------
-Student_006          | Female   | Asian American       | Kinesthetic
-Student_012          | Female   | White American       | Kinesthetic
-Student_030          | Female   | Hispanic             | Kinesthetic
-Student_039          | Male     | White American       | Kinesthetic
-Student_078          | Female   | Hispanic             | Kinesthetic
------------------------------------------------------------------
-
- GROUP 12 (5 students)
------------------------------------------------------------------
-Name                 | Gender   | Ethnicity            | Style     
------------------------------------------------------------------
-Student_001          | Male     | White American       | Visual    
-Student_019          | Male     | Asian American       | Visual    
-Student_052          | Female   | Asian American       | Visual    
-Student_058          | Female   | Hispanic             | Visual    
-Student_076          | Female   | Asian American       | Visual    
------------------------------------------------------------------
-
- GROUP 13 (5 students)
------------------------------------------------------------------
-Name                 | Gender   | Ethnicity            | Style     
------------------------------------------------------------------
-Student_013          | Male     | Black American       | Visual    
-Student_040          | Female   | Asian American       | Visual    
-Student_067          | Male     | White American       | Visual    
-Student_073          | Male     | Black American       | Visual    
-Student_100          | Female   | Asian American       | Visual    
------------------------------------------------------------------
-
- GROUP 14 (5 students)
------------------------------------------------------------------
-Name                 | Gender   | Ethnicity            | Style     
------------------------------------------------------------------
-Student_002          | Female   | Asian American       | Auditory  
-Student_004          | Female   | Black American       | Visual    
-Student_074          | Female   | Hispanic             | Auditory  
-Student_083          | Male     | White American       | Auditory  
-Student_089          | Male     | Black American       | Auditory  
------------------------------------------------------------------
-
- GROUP 15 (5 students)
------------------------------------------------------------------
-Name                 | Gender   | Ethnicity            | Style     
------------------------------------------------------------------
-Student_036          | Female   | Asian American       | Kinesthetic
-Student_060          | Female   | Asian American       | Kinesthetic
-Student_069          | Male     | Black American       | Kinesthetic
-Student_081          | Male     | Black American       | Kinesthetic
-Student_090          | Female   | Hispanic             | Kinesthetic
------------------------------------------------------------------
-
- GROUP 16 (5 students)
------------------------------------------------------------------
-Name                 | Gender   | Ethnicity            | Style     
------------------------------------------------------------------
-Student_034          | Female   | Hispanic             | Visual    
-Student_043          | Male     | White American       | Visual    
-Student_079          | Male     | White American       | Visual    
-Student_082          | Female   | Hispanic             | Visual    
-Student_091          | Male     | White American       | Visual    
------------------------------------------------------------------
-
- GROUP 17 (5 students)
------------------------------------------------------------------
-Name                 | Gender   | Ethnicity            | Style     
------------------------------------------------------------------
-Student_023          | Male     | Asian American       | Auditory  
-Student_029          | Male     | Black American       | Auditory  
-Student_038          | Female   | Hispanic             | Auditory  
-Student_080          | Female   | Asian American       | Auditory  
-Student_095          | Male     | White American       | Auditory  
------------------------------------------------------------------
-
- GROUP 18 (5 students)
------------------------------------------------------------------
-Name                 | Gender   | Ethnicity            | Style     
------------------------------------------------------------------
-Student_026          | Female   | Hispanic             | Auditory  
-Student_028          | Female   | Asian American       | Visual    
-Student_059          | Male     | White American       | Auditory  
-Student_062          | Female   | Hispanic             | Auditory  
-Student_088          | Female   | Asian American       | Visual    
------------------------------------------------------------------
-
- GROUP 19 (5 students)
------------------------------------------------------------------
-Name                 | Gender   | Ethnicity            | Style     
------------------------------------------------------------------
-Student_010          | Female   | Asian American       | Visual    
-Student_016          | Female   | White American       | Visual    
-Student_031          | Male     | White American       | Visual    
-Student_046          | Female   | Hispanic             | Visual    
-Student_097          | Male     | Black American       | Visual    
------------------------------------------------------------------
-
- GROUP 20 (5 students)
------------------------------------------------------------------
-Name                 | Gender   | Ethnicity            | Style     
------------------------------------------------------------------
-Student_020          | Female   | White American       | Auditory  
-Student_047          | Male     | White American       | Auditory  
-Student_056          | Female   | Asian American       | Auditory  
-Student_077          | Male     | Black American       | Auditory  
-Student_086          | Female   | Hispanic             | Auditory  
+Student_003          | Male     | Hispanic             | Kinesthetic
+Student_006          | Female   | Black American       | Visual    
+Student_010          | Female   | White American       | Kinesthetic
+Student_013          | Male     | White American       | Kinesthetic
+Student_022          | Female   | Asian American       | Kinesthetic
 -----------------------------------------------------------------

@@ -21,7 +21,7 @@ app = FastAPI(title="GroupGen API")
 # Enable CORS for Frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"], 
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -63,7 +63,7 @@ async def generate_groups(
 
         # B. Clustering (K-Medoids Manhattan)
         n_students = len(df)
-        n_groups = max(1, n_students // group_size)
+        n_groups = max(1, int(np.ceil(n_students / group_size)))
         
         labels, _ = kmedoids_pam(dist_manhattan, n_groups, random_state=42)
 
@@ -73,11 +73,11 @@ async def generate_groups(
         # D. Apply Constraints (Locking)
         isolated_gender = check_gender_isolation(df, labels)
         if isolated_gender:
-            labels = fix_gender_isolation(df, labels, euc_dist, isolated_gender)
+            labels = fix_gender_isolation(df, labels, dist_manhattan, isolated_gender)
         
         isolated_diversity = check_diversity_isolation(df, labels)
         if isolated_diversity:
-            labels = fix_diversity_isolation(df, labels, euc_dist, isolated_diversity)
+            labels = fix_diversity_isolation(df, labels, dist_manhattan, isolated_diversity)
 
         # 4. FORMAT RESPONSE & CALCULATE STATS
         df['Group_ID'] = labels + 1
@@ -117,6 +117,6 @@ async def generate_groups(
         traceback.print_exc() 
         raise HTTPException(status_code=500, detail=f"Algorithm Error: {str(e)}")
 
-if __name__ == "__api__":
+if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    uvicorn.run(app, host="0.0.0.0", port=8000)

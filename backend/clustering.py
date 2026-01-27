@@ -17,7 +17,7 @@ from typing import List, Dict, Tuple, Optional
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.metrics import pairwise_distances
 from sklearn.decomposition import PCA
-from .kmedoids import kmedoids_pam
+from kmedoids import kmedoids_pam
 
 # ==========================================
 # 1. Feature Engineering & Distances
@@ -34,54 +34,93 @@ def enforce_group_size(
     Places remainder students into the group they are closest to
     using the specified distance metric (default: manhattan).
     """
-    n_students = len(labels)
-    n_groups = n_students // group_size
-    
-    if n_groups == 0:
-        return np.zeros(n_students, dtype=int)
-    
-    remainder = n_students % group_size
-    
-    # Sort to keep core clusters together
-    sorted_indices = np.argsort(labels)
-    new_labels = np.full(n_students, -1, dtype=int)
-    
-    # Assign the "Core" (Perfect groups of 5)
-    cutoff = n_groups * group_size
-    core_indices = sorted_indices[:cutoff]
-    remainder_indices = sorted_indices[cutoff:]
-    
-    for i, idx in enumerate(core_indices):
-        new_labels[idx] = i // group_size
-        
-    # Assign the "Remainder" (The 31st student)
-    if remainder > 0:
-        if feature_matrix is not None:
-            # 1. Calculate the center (mean) of the new core groups
-            group_centers = []
-            for g_id in range(n_groups):
-                members = np.where(new_labels == g_id)[0]
-                group_centers.append(feature_matrix[members].mean(axis=0))
-            
-            group_centers = np.array(group_centers)
-            
-            # 2. Assign leftover students to the closest group center
-            # using the specific metric (Manhattan)
-            for idx in remainder_indices:
-                student_features = feature_matrix[idx].reshape(1, -1)
-                
-                # Compute distance to all group centers
-                dists = pairwise_distances(student_features, group_centers, metric=metric)
-                
-                # Find the index of the minimum distance
-                closest_group = np.argmin(dists)
-                new_labels[idx] = closest_group
-                
-        else:
-            # Fallback if no features provided
-            for i, idx in enumerate(remainder_indices):
-                new_labels[idx] = i % n_groups
+    if len(labels) == 0:
+        return labels
 
+    n_students = len(labels)
+    unique_groups = np.unique(labels)
+    n_groups = len(unique_groups)
+    
+    # Copy labels to avoid modifying original array
+    new_labels = labels.copy()
+
+    # 1. Determine Target Sizes (Balanced)
+    # We distribute the remainder to the first k groups
+    base_size = n_students // n_groups
+    remainder = n_students % n_groups
+    
+    # Calculate current counts
+    current_counts = {g: np.sum(new_labels == g) for g in unique_groups}
+    
+    # Assign target capacities
+    # Optimization: Assign larger targets to currently larger groups to minimize moves
+    sorted_groups_by_curr_size = sorted(unique_groups, key=lambda g: current_counts[g], reverse=True)
+    target_sizes = {}
+    for i, g_id in enumerate(sorted_groups_by_curr_size):
+        target_sizes[g_id] = base_size + (1 if i < remainder else 0)
+
+    # 2. Redistribution Loop
+    max_iter = n_students * 2  # Safety limit
+    
+    for _ in range(max_iter):
+        # Identify Donors (Have too many) and Receivers (Have too few)
+        donors = [g for g in unique_groups if current_counts[g] > target_sizes[g]]
+        receivers = [g for g in unique_groups if current_counts[g] < target_sizes[g]]
+        
+        if not donors or not receivers:
+            break # Perfectly balanced
+            
+        best_move = None
+        min_cost = float('inf')
+        
+        # If we have features, use distance. Else simplistic move.
+        if feature_matrix is not None:
+             # Precompute receiver centers to save time
+            receiver_centers = {}
+            for r_id in receivers:
+                mask = (new_labels == r_id)
+                if np.any(mask):
+                    receiver_centers[r_id] = feature_matrix[mask].mean(axis=0)
+                else:
+                    # If empty, center is 0 (should rarely happen in this flow)
+                    receiver_centers[r_id] = np.zeros(feature_matrix.shape[1])
+            
+            # Find the globally best single move from ANY donor to ANY receiver
+            for d_id in donors:
+                donor_indices = np.where(new_labels == d_id)[0]
+                donor_features = feature_matrix[donor_indices]
+                
+                for r_id in receivers:
+                    center_r = receiver_centers[r_id].reshape(1, -1)
+                    
+                    # Calculate distances from all potential donors to this receiver center
+                    # We use the metric passed in (e.g., 'manhattan')
+                    dists = pairwise_distances(donor_features, center_r, metric=metric).flatten()
+                    
+                    # Find closest student
+                    local_min_idx = np.argmin(dists)
+                    local_min_dist = dists[local_min_idx]
+                    
+                    if local_min_dist < min_cost:
+                        min_cost = local_min_dist
+                        best_move = (donor_indices[local_min_idx], r_id)
+        
+        else:
+            # Fallback (No features): Just move first available student
+            d_id = donors[0]
+            r_id = receivers[0]
+            student_idx = np.where(new_labels == d_id)[0][0]
+            best_move = (student_idx, r_id)
+            
+        # Execute the move
+        if best_move:
+            student_to_move, new_group = best_move
+            old_group = new_labels[student_to_move]
+            
+            new_labels[student_to_move] = new_group
+            current_counts[old_group] -= 1
+            current_counts[new_group] += 1
+            
     return new_labels
     
 
@@ -513,7 +552,7 @@ def check_gender_isolation(pd, labels):
     Check if any group has gender isolation (e.g., all men and one woman).
     
     Args:
-        df: DataFrame with student data (must have 'Gender' column)
+        pd: DataFrame with student data (must have 'Gender' column)
         labels: Cluster labels for each student
         
     Returns:
