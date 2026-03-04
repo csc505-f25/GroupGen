@@ -13,32 +13,39 @@ Shaun Wallace        | Male     | Caucasian            | Kinesthetic
 Thierno              | Male     | Black/African        | Kinesthetic
 -----------------------------------------------------------------
 
- GROUP 2 (4 students)
+ GROUP 2 (3 students)
 -----------------------------------------------------------------
 Name                 | Gender   | Ethnicity            | Style     
 -----------------------------------------------------------------
 Aidan Leach          | Male     | Caucasian            | Visual    
 Brennon Pafume       | Male     | Caucasian            | Auditory  
 Liam Washburn        | Male     | Caucasian            | Kinesthetic
-Ryan Brooks          | Male     | Caucasian            | Visual    
 -----------------------------------------------------------------
 
- GROUP 3 (4 students)
+ GROUP 3 (3 students)
 -----------------------------------------------------------------
 Name                 | Gender   | Ethnicity            | Style     
 -----------------------------------------------------------------
-Dominic Tucchio      | Male     | Caucasian            | Visual    
 Jack Lanoie          | Male     | Caucasian            | Visual    
 Lily Nguyen          | Female   | Asian                | Visual    
 Nadia Sutyrina       | Female   | Caucasian            | Visual    
 -----------------------------------------------------------------
 
- GROUP 4 (4 students)
+ GROUP 4 (3 students)
 -----------------------------------------------------------------
 Name                 | Gender   | Ethnicity            | Style     
 -----------------------------------------------------------------
 Ben Dahrooge         | Male     | Caucasian            | Visual    
+Dominic Tucchio      | Male     | Caucasian            | Visual    
+DominicTucchi2       | Male     | Caucasian            | Visual    
+-----------------------------------------------------------------
+
+ GROUP 5 (4 students)
+-----------------------------------------------------------------
+Name                 | Gender   | Ethnicity            | Style     
+-----------------------------------------------------------------
 Emily Light          | Female   | Caucasian            | Visual    
 Jenny You            | Female   | Asian                | Visual    
 Peter Finch          | Male     | Caucasian            | Visual    
+Ryan Brooks          | Male     | Caucasian            | Visual    
 -----------------------------------------------------------------

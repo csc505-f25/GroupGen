@@ -27,7 +27,8 @@ def enforce_group_size(
     labels: np.ndarray, 
     group_size: int, 
     feature_matrix: np.ndarray = None,
-    metric: str = 'manhattan'  # <--- NEW: Match your clustering metric
+    metric: str = 'manhattan',
+    expected_n_clusters: int = None # <--- NEW: Explicitly pass expected number of groups
 ):
     """
     Redistributes students to enforce target group size.
@@ -38,8 +39,16 @@ def enforce_group_size(
         return labels
 
     n_students = len(labels)
-    unique_groups = np.unique(labels)
-    n_groups = len(unique_groups)
+    unique_groups_observed = np.unique(labels)
+    
+    # DETERMINE TOTAL GROUPS
+    if expected_n_clusters is not None:
+        n_groups = expected_n_clusters
+        # Ensure we consider ALL groups 0..n_groups-1, even if empty
+        all_groups = np.arange(n_groups)
+    else:
+        n_groups = len(unique_groups_observed)
+        all_groups = unique_groups_observed
     
     # Copy labels to avoid modifying original array
     new_labels = labels.copy()
@@ -49,12 +58,15 @@ def enforce_group_size(
     base_size = n_students // n_groups
     remainder = n_students % n_groups
     
-    # Calculate current counts
-    current_counts = {g: np.sum(new_labels == g) for g in unique_groups}
+    # Calculate current counts (initialize 0 for all expected groups)
+    current_counts = {g: 0 for g in all_groups}
+    for g in new_labels:
+        if g in current_counts:
+            current_counts[g] += 1
     
     # Assign target capacities
     # Optimization: Assign larger targets to currently larger groups to minimize moves
-    sorted_groups_by_curr_size = sorted(unique_groups, key=lambda g: current_counts[g], reverse=True)
+    sorted_groups_by_curr_size = sorted(all_groups, key=lambda g: current_counts[g], reverse=True)
     target_sizes = {}
     for i, g_id in enumerate(sorted_groups_by_curr_size):
         target_sizes[g_id] = base_size + (1 if i < remainder else 0)
@@ -64,8 +76,8 @@ def enforce_group_size(
     
     for _ in range(max_iter):
         # Identify Donors (Have too many) and Receivers (Have too few)
-        donors = [g for g in unique_groups if current_counts[g] > target_sizes[g]]
-        receivers = [g for g in unique_groups if current_counts[g] < target_sizes[g]]
+        donors = [g for g in all_groups if current_counts[g] > target_sizes[g]]
+        receivers = [g for g in all_groups if current_counts[g] < target_sizes[g]]
         
         if not donors or not receivers:
             break # Perfectly balanced
@@ -278,44 +290,31 @@ def initial_clustering(
     
     return labels
 
-
 def compare_metrics_and_visualize(
     df: pd.DataFrame, 
-    n_clusters: int = 3, 
+    desired_group_size: int, # Changed from n_clusters
     random_state: Optional[int] = 42, 
-    group_size: int = None, 
     use_kmedoids: bool = True):
-    """
-    Compute feature vectors from `df` and run clustering with both Euclidean and
-    Manhattan assignment metrics, visualizing each result using existing helpers.
-
-    This function is a convenience wrapper to help you compare how the two
-    metrics behave on the same data. It does not modify `df`.
-
-    Args:
-        df: Input DataFrame with student data
-        n_clusters: Number of clusters
-        random_state: Random seed for reproducibility
-        group_size: Optional; if set, enforce balanced group sizes via post-processing
-        use_kmedoids: If True, use K-Medoids (PAM) for manhattan metric; if False, use K-Means for both
-    """
+    
     feature_matrix = compute_feature_vector(df)
+    
+    # --- DYNAMIC K CALCULATION ---
+    n_students = len(df)
+    n_clusters = max(1, n_students // desired_group_size)
 
     for metric in ("euclidean", "manhattan"):
-        print(f"\n=== Running clustering with metric: {metric} (K={n_clusters}) ===")
+        print(f"\n=== Running clustering with metric: {metric} (Calculated K={n_clusters}) ===")
 
-        # Choose algorithm: K-Medoids for Manhattan (if use_kmedoids=True), K-Means for Euclidean
         if metric == "manhattan" and use_kmedoids:
             labels, medoid_indices = kmedoids_pam(feature_matrix, n_clusters, distance_metric=metric, random_state=random_state)
-            centroids = feature_matrix[medoid_indices]  # For visualization
-            print(f"Using K-Medoids (medoid indices: {medoid_indices})")
+            print(f"Using K-Medoids")
         else:
             labels, centroids = kmeans_custom(feature_matrix, n_clusters, random_state=random_state, return_centroids=True, metric=metric)
             print(f"Using K-Means")
 
-        if group_size is not None:
-            labels = enforce_group_size(labels, group_size)
-            print(f"Groups forcibly balanced to {group_size} students each.")
+        # Automatically enforce size as a secondary step
+        labels = enforce_group_size(labels, desired_group_size, feature_matrix=feature_matrix, expected_n_clusters=n_clusters)
+        
         visualize_clustering(feature_matrix, labels, n_clusters, df=df, metric=metric)
 
 
@@ -599,95 +598,59 @@ def fix_gender_isolation(
     """
     labels = labels.copy() # Work on a copy to avoid accidental side effects
     
-    # Iterate through each group that was flagged as isolated
     for group_id, isolation_type in isolated_groups.items():
         
-        # 1. SETUP: Determine what we need to find and what we need to give away
-        # ---------------------------------------------------------------------
-        target_gender = None   # The gender we need to BRING IN
-        swap_out_gender = None # The gender we need to SEND OUT
-        
-        if isolation_type == 'female_isolated':
-            # Group has 1 Female, many Males. 
-            # We need another Female. We will trade away a Male.
-            target_gender = 'Female'
-            swap_out_gender = 'Male'
-        elif isolation_type == 'male_isolated':
-            # Group has 1 Male, many Females.
-            # We need another Male. We will trade away a Female.
-            target_gender = 'Male'
-            swap_out_gender = 'Female'
-            
-        # Get indices of students currently in this isolated group
+        # --- CRITICAL FIX 1: Re-verify the group is STILL isolated ---
+        # (If we combined two isolated students earlier in this loop, 
+        # this group might have already been fixed!)
         current_group_indices = np.where(labels == group_id)[0]
+        current_genders = df.iloc[current_group_indices]['Gender']
         
-        # Identify the candidates IN THIS GROUP who can be swapped out
+        target_gender = 'Female' if isolation_type == 'female_isolated' else 'Male'
+        swap_out_gender = 'Male' if isolation_type == 'female_isolated' else 'Female'
+        
+        if (current_genders == target_gender).sum() != 1:
+            continue # Already fixed by a previous swap, skip!
+
         candidates_to_swap_out = [
             idx for idx in current_group_indices 
             if df.iloc[idx]['Gender'] == swap_out_gender
         ]
         
-        if not candidates_to_swap_out:
-            continue # Should not happen if check_gender_isolation is correct, but safety first
+        if not candidates_to_swap_out: continue 
 
-        # 2. FIND A DONOR: Look for the best swap from other groups
-        # ---------------------------------------------------------------------
         best_swap = None
         min_cost = float('inf')
-        
         unique_labels = np.unique(labels)
         
         for donor_group_id in unique_labels:
-            if donor_group_id == group_id:
-                continue # Cannot swap with self
+            if donor_group_id == group_id: continue 
             
-            # Get donor group members
             donor_indices = np.where(labels == donor_group_id)[0]
             donor_genders = df.iloc[donor_indices]['Gender']
-            
-            # CHECK: Does this donor group have enough of the target gender?
-            # We generally only want to take from a group if they have > 2 of that gender,
-            # so we don't accidentally create a NEW isolation problem there.
             count_target = (donor_genders == target_gender).sum()
             
-            if count_target > 2: # Safe to take one
+            # --- CRITICAL FIX 2: The "Combining" Rule ---
+            # Safe if they have > 2 (leaves them with 2+)
+            # OR Safe if they have exactly 1 (leaves them with 0, fixing isolation there too!)
+            if count_target > 2 or count_target == 1: 
                 
-                # Identify candidates in the DONOR group who are the target gender
                 candidates_to_bring_in = [
                     idx for idx in donor_indices 
                     if df.iloc[idx]['Gender'] == target_gender
                 ]
                 
-                # 3. CALCULATE COST: Find the pair with minimum distance
-                # -------------------------------------------------------------
-                # We want the student coming IN to be similar to the students currently 
-                # in the isolated group.
-                
                 for candidate_in in candidates_to_bring_in:
-                    # Calculate average distance from this candidate to the REST of the isolated group
-                    # (excluding the person we are swapping out)
-                    
-                    # Simple heuristic: Just minimize the distance between the IN and OUT students
-                    # (This is often sufficient and faster than full group centroid recalc)
                     for candidate_out in candidates_to_swap_out:
-                        
-                        # Distance between the student leaving and student entering
-                        # Lower distance = they are similar = less disruption to group chemistry
                         dist = distance_matrix[candidate_in, candidate_out]
-                        
                         if dist < min_cost:
                             min_cost = dist
                             best_swap = (candidate_in, candidate_out, donor_group_id)
 
-        # 4. EXECUTE SWAP
-        # ---------------------------------------------------------------------
         if best_swap:
             student_in, student_out, donor_id = best_swap
-            
-            # Perform the swap in the labels array
-            labels[student_in] = group_id   # Move donor student to isolated group
-            labels[student_out] = donor_id  # Move isolated group student to donor group
-            
+            labels[student_in] = group_id   
+            labels[student_out] = donor_id  
             print(f"Fixed {isolation_type} in Group {group_id}: Swapped {student_in} (from G{donor_id}) with {student_out}")
             
     return labels
@@ -764,7 +727,7 @@ def fix_diversity_isolation(df: pd.DataFrame, labels: np.ndarray, distance_matri
 
 def form_balanced_groups(
     df: pd.DataFrame,
-    n_groups: int,
+    desired_group_size: int,
     random_state: Optional[int] = None,
     enforce_gender_balance: bool = True,
     enforce_diversity_balance: bool = True,
@@ -773,6 +736,10 @@ def form_balanced_groups(
     """
     Main function to form balanced student groups with locking mechanisms.
     """
+    # --- DYNAMIC K CALCULATION ---
+    n_students = len(df)
+    n_groups = max(1, n_students // desired_group_size) # The "Table Anchor" logic
+
     # Step 1: Compute feature vectors
     feature_matrix = compute_feature_vector(df)
     
@@ -787,6 +754,13 @@ def form_balanced_groups(
     # (Note: If you want K-Medoids here, you should swap this call, 
     # but for now we stick to the default initial_clustering function)
     labels = initial_clustering(feature_matrix, n_groups, random_state, visualize=visualize, df=df)
+
+    labels = enforce_group_size(
+        labels, 
+        desired_group_size, 
+        feature_matrix=feature_matrix, 
+        expected_n_clusters=n_groups
+    )
     
     # Step 4: Check and fix gender isolation
     if enforce_gender_balance:
