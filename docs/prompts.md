@@ -1,90 +1,87 @@
-# GroupGen: The Prompt Engineering Library
+﻿# GroupGen: The Prompt Engineering Library
 
-This library is a collection of high-fidelity prompts designed to orchestrate the **GroupGen** ecosystem. Whether you are tuning the K-Medoids algorithm, drafting educator reports, or expanding the Next.js frontend, use these templates to get the most out of LLMs like Gemini 1.5 Pro, GPT-4, or Claude 3.5.
+This library is a collection of high-fidelity prompts designed to orchestrate the **GroupGen** ecosystem. Use these templates to guide LLMs through the transition from tabular logic to a **Multimodal Deep Learning** architecture.
 
 ---
 
 ## 🏗️ 0. Global System Context (The "System Persona")
 *Copy and paste this at the start of any new chat session to provide the AI with full architectural awareness.*
 
-> **Persona:** You are a Senior Fullstack Engineer and Data Scientist specializing in educational technology and algorithmic fairness.
+> **Persona:** You are a Senior Fullstack Engineer and Deep Learning Researcher specializing in EdTech and Multimodal AI.
 >
-> **Project Overview:** "GroupGen" is an automated student grouping system that balances academic traits with demographic inclusivity.
-> - **Backend:** Python, FastAPI, Pandas, Scikit-learn.
-> - **Clustering:** K-Medoids (PAM) using Manhattan/Gower distance to handle mixed-type data (Numerical: Motivation, Work Ethic; Categorical: Learning Style, Gender, Diversity).
-> - **Key Innovation:** A post-clustering "Locking Mechanism" that swaps students to prevent demographic isolation (solo-status) while preserving cluster integrity.
-> - **Frontend:** Next.js 14+, TypeScript, Tailwind CSS, providing a dashboard for CSV uploads and group visualization.
+> **Project Overview:** "GroupGen" is transitioning from a tabular clustering engine to a **Multimodal Deep Learning System**. It uses a two-branch Autoencoder to fuse structured survey data with unstructured natural language text into a unified 16-dimensional latent space.
+> - **Backend:** Python, FastAPI, PyTorch, HuggingFace Transformers (DistilBERT), Scikit-learn.
+> - **Architecture:** A Multimodal Autoencoder compresses tabular and text data into bottleneck embeddings, which are then clustered via K-Medoids.
+> - **Key Innovation:** Semantic matching of student "Working Styles" paired with a post-clustering "Locking Mechanism" to ensure demographic fairness and prevent isolation.
+> - **Frontend:** Next.js 14+, TypeScript, Tailwind CSS, Recharts.
 
 ---
 
-## 🧬 1. Backend & Algorithmic Optimization
-*Focus: Logic refinement, distance metrics, and performance tuning.*
+## 🧠 1. Phase-Based Multimodal Implementation
+*Focus: Building the Deep Learning pipeline from scratch.*
 
-### A. Implementing Weighted Gower Distance
-> "We need to adjust the clustering to weigh 'Learning_Style' more heavily than other traits. Currently, we use a standard Manhattan distance on one-hot encoded variables. Propose a custom distance function that:
-> 1. Applies a 2.0x weight to mismatches in 'Learning_Style'.
-> 2. Normalizes numerical 'Motivation' scores to a 0-1 range before distance calculation.
-> 3. Integrates seamlessly with the existing `kmedoids_pam` implementation in `backend/kmedoids.py`.
-> Explain how this will affect the Silhouette Score vs. the cluster interpretability."
+### A. Phase 1: Environment & Deep Learning Dependencies
+> "We are upgrading GroupGen to support Multimodal Deep Learning. 
+> 1. Update `requirements.txt` to include `torch`, `transformers`, and `tqdm`. 
+> 2. Propose a directory structure for the new ML assets (e.g., `backend/models/`, `backend/scripts/`, `backend/weights/`).
+> 3. Verify that `distilbert-base-uncased` is the optimal choice for local training on a standard laptop vs. a full BERT model."
 
-### B. Heuristic Swap Logic (Simulated Annealing)
-> "The current 'Locking Mechanism' in `backend/clustering.py` uses a greedy approach to fix solo-status isolation. Design a more robust heuristic using **Simulated Annealing**. The energy function should minimize both (a) demographic isolation and (b) the increase in Within-Cluster Sum of Squares (WCSS). Provide a Python implementation that handles edge cases where no valid swaps are available."
+### B. Phase 2: Procedural Synthetic Data Generation
+> "We need 5,000 synthetic student profiles to train our Autoencoder. Create `backend/scripts/generate_multimodal_data.py` to:
+> 1. Generate random tabular traits (Gender, Diversity, Motivation, etc.) following existing distributions.
+> 2. Use a template-based procedural approach to generate 'Working Style' paragraphs. 
+> 3. **CRITICAL:** Ensure the text content correlates with the tabular traits (e.g., a student with high 'Work Ethic' should have text suggesting leadership or diligence) so the model has a meaningful manifold to learn.
+> 4. Export the result to `backend/data/synthetic_multimodal_students.csv`."
 
-### C. Dynamic Form Intake & Likert Parsing
-> "We need to dynamically parse a raw Google Form CSV. Review `backend/group_gen_intake.py`. 
-> 1. Identify repeated 'Magic Wand' questions to act as unbreakable column boundary anchors. Use these indexes to slice the dataframe into sections (Self-Esteem, Motivation, Work Ethic) so the script is immune to added or deleted questions.
-> 2. Implement a robust `_parse_survey_score` helper that intercepts text strings. It should extract leading digits first, and cleanly map frequency words like 'Always' (4) or 'Sometimes' (2) to numeric floats before pandas coercion.
-> Explain how this dynamic slicing prevents index-shifting errors and NaN data corruption."
+### C. Phase 3: The Two-Branch Autoencoder Architecture
+> "Design the PyTorch architecture in `backend/multimodal_autoencoder.py`.
+> 1. **TabularBranch:** A MLP that handles one-hot encoded and scaled survey data.
+> 2. **TextBranch:** Uses a frozen `DistilBertModel` to extract the `[CLS]` token embedding.
+> 3. **Fusion Layer:** Concatenates both branches and reduces them to a 16-dimensional bottleneck.
+> 4. **Decoder:** Reconstructs the **Tabular targets only** (reconstructing text is too expensive). 
+> 5. Explain why using the text solely for the bottleneck compression (and not reconstruction) is standard practice for multimodal clustering."
 
----
+### D. Phase 4: Training Loop & Convergence Strategy
+> "Implement the training pipeline in `backend/scripts/train_autoencoder.py`.
+> 1. Create a `StudentDataset` class that handles tokenization via `DistilBertTokenizer`.
+> 2. Write a training loop with `MSELoss` for tabular reconstruction.
+> 3. Include `tqdm` progress bars and periodic validation on an 80/20 split.
+> 4. Save the final model weights to `backend/weights/multimodal_autoencoder.pt`. 
+> 5. Describe how to monitor the loss curve to ensure the network isn't just memorizing the tabular inputs."
 
-## 🎨 2. Frontend & UI/UX Orchestration
-*Focus: Dashboard enhancements, data visualization, and user experience.*
-
-### A. Dynamic Group Comparison Component
-> "Review the current `page.tsx` results grid. I want to add a 'Comparative Analytics' drawer that appears when two groups are selected. 
-> 1. Use **Recharts** or a similar library to show a radar chart comparing the average 'Motivation', 'Work Ethic', and 'Self-Esteem' of the selected groups.
-> 2. Implement the state logic in the React component to handle multi-selection.
-> 3. Ensure the design matches the existing Tailwind 'Slate/Indigo' aesthetic."
-
-### B. Accessibility & Responsive "Print" Mode
-> "The 'Print Report' feature needs to be more professional. Modify the Tailwind classes in `page.tsx` to ensure that when printing:
-> 1. Background colors are removed but borders are preserved.
-> 2. Each group card has a `break-inside-avoid` property.
-> 3. A professional header with the date and 'Class Statistics' (Total Students, Mean Motivation) is added only to the printed version."
-
----
-
-## 📝 3. Pedagogical & Strategic Communications
-*Focus: Reports, stakeholder buy-in, and student engagement.*
-
-### A. The "Psychological Safety" Syllabus Statement
-> "Draft a 300-word section for a university course syllabus titled 'How Your Teams Were Formed'. Explain the GroupGen methodology to students. 
-> - Focus on the concept of 'Cognitive Diversity' (combining different learning styles).
-> - Reassure students that the algorithm actively prevents demographic isolation to foster a safe environment.
-> - Use an encouraging, transparent tone that builds trust in the 'AI-assisted' process."
-
-### B. Executive Summary for Administration
-> "Generate a summary report for a Department Head based on the `final_groups_report.txt`. 
-> 1. Quantify the 'Diversity Lift' (how much demographic isolation was reduced compared to random grouping).
-> 2. Summarize the 'Balance Metrics' (Avg Motivation variance across groups).
-> 3. Highlight any 'At-Risk' groups (e.g., groups with low overall Motivation) that might require additional TA support."
+### E. Phase 5: Inference & K-Medoids Integration
+> "Integrate the trained model into the production pipeline via `backend/multimodal_inference.py`.
+> 1. Load the frozen `.pt` weights.
+> 2. Create an `extract_embeddings(df)` function that returns the 16D bottleneck matrices.
+> 3. Update `backend/clustering.py` to use these embeddings for distance calculation instead of the raw tabular data.
+> 4. Ensure the 'Locking Mechanism' (Heuristic Swaps) still functions correctly on the resulting clusters."
 
 ---
 
-## 🧪 4. QA & Edge-Case Simulation
-*Focus: Stress testing and data validation.*
+## 🧬 2. Classic Algorithmic Tuning (Legacy Support)
+*Focus: Refining the existing K-Medoids and Heuristic logic.*
 
-### A. Synthetic Data: "The Fragmented Cohort"
-> "Generate a 100-row CSV representing a 'Fragmented Cohort'. 
-> - 60% of students have high 'Work_Ethic' but low 'Motivation'.
-> - There are 5 different 'Diversity' categories, with 3 of them containing only a single student.
-> - This dataset will be used to stress-test the `enforce_group_size` and `fix_diversity_isolation` functions. Ensure the data follows the exact GroupGen schema."
+### A. Weighted Gower Distance
+> "We need to adjust the clustering to weigh 'Learning_Style' more heavily. Propose a custom distance function in `backend/kmedoids.py` that applies a 2.0x weight to mismatches in categorical traits while keeping numerical scores normalized."
+
+### B. Simulated Annealing Swap Logic
+> "Replace the greedy 'Locking Mechanism' in `backend/clustering.py` with a **Simulated Annealing** heuristic. The energy function should minimize demographic isolation while preventing a significant increase in cluster variance (WCSS)."
 
 ---
 
-## 💡 5. Prompting Best Practices for GroupGen
-1. **Always Attach Context:** If asking for a bug fix, paste the specific function from `clustering.py`.
-2. **Chain of Thought:** Start prompts with "Let's think step-by-step about the mathematical implications of..."
-3. **Structured Output:** Ask for specific formats: "Provide a JSON schema for the API response," or "Give me a Tailwind-only solution."
-4. **Constraint-Based Prompting:** Explicitly state what to avoid (e.g., "Do not use external libraries like NumPy unless essential for performance").
+## 🎨 3. Frontend & UI/UX Orchestration
+*Focus: Visualizing the new Multimodal clusters.*
+
+### A. Embedding Space Visualization (PCA)
+> "I want to visualize the 16D student embeddings on the frontend. 
+> 1. Create a FastAPI endpoint that runs PCA on the student embeddings to reduce them to 2D coordinates.
+> 2. On the frontend, use **Recharts** (ScatterChart) to plot these students, coloring them by their assigned cluster.
+> 3. Allow users to hover over a point to see the student's original 'Working Style' text."
+
+---
+
+## 💡 4. Prompting Best Practices for GroupGen
+1. **Chain of Thought:** Always ask the AI to "think step-by-step about the latent space implications."
+2. **Context Injection:** When debugging the Autoencoder, provide the shapes of your input tensors (e.g., "The tabular tensor is [Batch, 12]").
+3. **Weight Management:** Explicitly remind the AI to handle `model.eval()` and `torch.no_grad()` during inference to save memory.
+4. **Constraint Awareness:** Remind the AI that while the *distance* is now deep-learned, the *group size* and *diversity rules* are still hard-coded heuristics.
