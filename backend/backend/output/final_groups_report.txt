@@ -3,49 +3,37 @@
 FINAL GROUP ASSIGNMENTS REPORT
 =================================================================
 
- GROUP 1 (4 students)
+ GROUP 1 (6 students)
 -----------------------------------------------------------------
 Name                 | Gender   | Ethnicity            | Style     
 -----------------------------------------------------------------
 Emory Salaun         | Male     | Caucasian            | Kinesthetic
+Jack Lanoie          | Male     | Caucasian            | Visual    
 Kye Farhadi          | Male     | Asian                | Kinesthetic
+Liam Washburn        | Male     | Caucasian            | Kinesthetic
 Shaun Wallace        | Male     | Caucasian            | Kinesthetic
 Thierno              | Male     | Black/African        | Kinesthetic
 -----------------------------------------------------------------
 
- GROUP 2 (3 students)
+ GROUP 2 (6 students)
 -----------------------------------------------------------------
 Name                 | Gender   | Ethnicity            | Style     
 -----------------------------------------------------------------
 Aidan Leach          | Male     | Caucasian            | Visual    
 Brennon Pafume       | Male     | Caucasian            | Auditory  
-Liam Washburn        | Male     | Caucasian            | Kinesthetic
+Emily Light          | Female   | Caucasian            | Visual    
+Jenny You            | Female   | Asian                | Visual    
+Peter Finch          | Male     | Caucasian            | Visual    
+Ryan Brooks          | Male     | Caucasian            | Visual    
 -----------------------------------------------------------------
 
- GROUP 3 (3 students)
------------------------------------------------------------------
-Name                 | Gender   | Ethnicity            | Style     
------------------------------------------------------------------
-Jack Lanoie          | Male     | Caucasian            | Visual    
-Lily Nguyen          | Female   | Asian                | Visual    
-Nadia Sutyrina       | Female   | Caucasian            | Visual    
------------------------------------------------------------------
-
- GROUP 4 (3 students)
+ GROUP 3 (5 students)
 -----------------------------------------------------------------
 Name                 | Gender   | Ethnicity            | Style     
 -----------------------------------------------------------------
 Ben Dahrooge         | Male     | Caucasian            | Visual    
 Dominic Tucchio      | Male     | Caucasian            | Visual    
 DominicTucchi2       | Male     | Caucasian            | Visual    
------------------------------------------------------------------
-
- GROUP 5 (4 students)
------------------------------------------------------------------
-Name                 | Gender   | Ethnicity            | Style     
------------------------------------------------------------------
-Emily Light          | Female   | Caucasian            | Visual    
-Jenny You            | Female   | Asian                | Visual    
-Peter Finch          | Male     | Caucasian            | Visual    
-Ryan Brooks          | Male     | Caucasian            | Visual    
+Lily Nguyen          | Female   | Asian                | Visual    
+Nadia Sutyrina       | Female   | Caucasian            | Visual    
 -----------------------------------------------------------------

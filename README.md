@@ -1,6 +1,6 @@
 # GroupGen: Automated Student Grouping System
 
-GroupGen is a machine learning pipeline designed to form student groups that are both skill-balanced and demographically inclusive. It uses unsupervised clustering algorithms to group students based on behavioral traits (Motivation, Work Ethic, Self-Esteem) and applies a custom "Locking Mechanism" to ensure fairness and prevent demographic isolation.
+GroupGen is a full-stack ML application designed to form student groups that are both skill-balanced and demographically inclusive. It orchestrates a Python backend running unsupervised clustering algorithms (K-Medoids / Manhattan Distance) connected to a Next.js frontend GUI.
 
 ## Project Structure
 

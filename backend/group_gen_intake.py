@@ -85,20 +85,16 @@ def process_google_form(input_source, output_path: str = None) -> pd.DataFrame:
     ls_end = wand_indices[0] if len(wand_indices) > 0 else 31
 
     # 2. Self-Esteem (Starts after first Magic Wand)
-    se_start = wand_indices[0] + 1
-    # Ends at the start of the Motivation section
-    se_end = find_index("not the type to do well in computer programming")
+    se_start = wand_indices[0] + 1 if len(wand_indices) > 0 else 33
+    se_end = wand_indices[1] if len(wand_indices) > 1 else df.shape[1]
     
-    # 3. Motivation (Starts at 'not the type', ends at the NEXT Magic Wand)
-    mot_start = se_end
-    # Find the wand that comes immediately after Motivation
-    mot_end = next((i for i in wand_indices if i > mot_start), mot_start + 17)
+    # 3. Motivation
+    mot_start = wand_indices[1] + 1 if len(wand_indices) > 1 else se_end
+    mot_end = wand_indices[2] if len(wand_indices) > 2 else df.shape[1]
     
-    # 4. Work Ethic (Starts at 'arrive at classes')
-    # Note: Skipped the extra questions (59-65) to strictly grab Work Ethic
-    we_start = find_index("arrive at classes and other meetings on time")
-    # Find the wand that comes immediately after Work Ethic
-    we_end = next((i for i in wand_indices if i > we_start), we_start + 9)
+    # 4. Work Ethic
+    we_start = wand_indices[2] + 1 if len(wand_indices) > 2 else mot_end
+    we_end = wand_indices[3] if len(wand_indices) > 3 else df.shape[1]
 
 
     # -- Clean Data ----------------------------------------------------------
@@ -124,19 +120,40 @@ def process_google_form(input_source, output_path: str = None) -> pd.DataFrame:
         if val_clean.startswith("C"): return "C"
         return "UNKNOWN"
 
-    ls_cols = ls_cols.applymap(_extract_abc)
+    ls_cols = ls_cols.map(_extract_abc)
     out['Learning_Style'] = ls_cols.apply(_learning_style, axis=1)
 
+    # -- Helper to parse scores containing text --
+    def _parse_survey_score(val):
+        if pd.isna(val) or str(val).strip() == "": return np.nan
+        val_str = str(val).lower().strip()
+        import re
+        match = re.search(r'(\d+)', val_str)
+        if match: return float(match.group(1))
+        
+        if 'strongly agree' in val_str: return 5.0
+        if 'strongly disagree' in val_str: return 1.0
+        if 'disagree' in val_str: return 2.0
+        if 'agree' in val_str: return 4.0
+        if 'neutral' in val_str or 'neither' in val_str: return 3.0
+        
+        if 'always' in val_str: return 4.0
+        if 'usually' in val_str or 'often' in val_str: return 3.0
+        if 'sometimes' in val_str: return 2.0
+        if 'rarely' in val_str or 'never' in val_str: return 1.0
+        
+        return np.nan
+
     # -- Self-Esteem (1-7 mean -> 1-4) ---------------------------------------
-    se_cols = df.iloc[:, se_start:se_end].apply(pd.to_numeric, errors='coerce').fillna(0).astype(float)
+    se_cols = df.iloc[:, se_start:se_end].apply(lambda col: col.map(_parse_survey_score)).fillna(0).astype(float)
     out['Self_Esteem'] = se_cols.mean(axis=1).round(2).apply(_mean_to_1_4_se)
 
     # -- Motivation (Mean -> 1-4 scale) --------------------------------------
-    mot_cols = df.iloc[:, mot_start:mot_end].apply(pd.to_numeric, errors='coerce').fillna(0).astype(float)
+    mot_cols = df.iloc[:, mot_start:mot_end].apply(lambda col: col.map(_parse_survey_score)).fillna(0).astype(float)
     out['Motivation'] = mot_cols.mean(axis=1).round(2).apply(_mean_to_1_4_mot_we)
 
     # -- Work Ethic (Mean -> 1-4 scale) --------------------------------------
-    we_cols = df.iloc[:, we_start:we_end].apply(pd.to_numeric, errors='coerce').fillna(0).astype(float)
+    we_cols = df.iloc[:, we_start:we_end].apply(lambda col: col.map(_parse_survey_score)).fillna(0).astype(float)
     out['Work_Ethic'] = we_cols.mean(axis=1).round(2).apply(_mean_to_1_4_mot_we)
 
     # -- Demographics --------------------------------------------------------

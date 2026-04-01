@@ -89,7 +89,7 @@ app = FastAPI(title="GroupGen API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -116,6 +116,10 @@ async def generate_groups(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Could not parse CSV: {str(e)}")
 
+    if df.empty:
+        raise HTTPException(status_code=400, detail="The uploaded CSV is entirely empty or only contains invalid 'Ghost Rows'. Please upload a valid CSV with student data.")
+
+
     # 2. VALIDATE COLUMNS
     required_cols = ['Name', 'Motivation', 'Self_Esteem', 'Work_Ethic', 'Learning_Style', 'Gender', 'Diversity']
     missing = [col for col in required_cols if col not in df.columns]
@@ -136,6 +140,11 @@ async def generate_groups(
         # B. Clustering (K-Medoids Manhattan)
         n_students = len(df)
         n_groups = max(1, int(np.ceil(n_students / group_size)))
+        
+        # Prevent individual isolation (groups of 1) by reducing group count
+        # until the minimum mathematical group size is at least 2.
+        while n_groups > 1 and n_students // n_groups < 2:
+            n_groups -= 1
         
         labels, _ = kmedoids_pam(dist_manhattan, n_groups, random_state=42)
         log_pipeline_step("4. INITIAL CLUSTERING (K-Medoids)", labels, f"Created {n_groups} initial clusters.")

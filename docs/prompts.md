@@ -30,6 +30,12 @@ This library is a collection of high-fidelity prompts designed to orchestrate th
 ### B. Heuristic Swap Logic (Simulated Annealing)
 > "The current 'Locking Mechanism' in `backend/clustering.py` uses a greedy approach to fix solo-status isolation. Design a more robust heuristic using **Simulated Annealing**. The energy function should minimize both (a) demographic isolation and (b) the increase in Within-Cluster Sum of Squares (WCSS). Provide a Python implementation that handles edge cases where no valid swaps are available."
 
+### C. Dynamic Form Intake & Likert Parsing
+> "We need to dynamically parse a raw Google Form CSV. Review `backend/group_gen_intake.py`. 
+> 1. Identify repeated 'Magic Wand' questions to act as unbreakable column boundary anchors. Use these indexes to slice the dataframe into sections (Self-Esteem, Motivation, Work Ethic) so the script is immune to added or deleted questions.
+> 2. Implement a robust `_parse_survey_score` helper that intercepts text strings. It should extract leading digits first, and cleanly map frequency words like 'Always' (4) or 'Sometimes' (2) to numeric floats before pandas coercion.
+> Explain how this dynamic slicing prevents index-shifting errors and NaN data corruption."
+
 ---
 
 ## 🎨 2. Frontend & UI/UX Orchestration
