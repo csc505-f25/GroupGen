@@ -36,3 +36,9 @@ Thumbs.db
 # ---- Temporary ----
 tmp/
 *.bak
+
+# ---- Deep Learning / Large Files ----
+*.pt
+*.pkl
+*.zip
+colab_upload/

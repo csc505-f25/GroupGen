@@ -71,7 +71,7 @@ def log_pipeline_step(step_name, data=None, msg=""):
         print(f"Logging failed (but pipeline continues): {e}")
 
 # Import the logic we already verified in clustering.py
-from clustering import (
+from .clustering import (
     compute_feature_vector, 
     compute_distance_matrix, 
     enforce_group_size, 
@@ -80,8 +80,8 @@ from clustering import (
     check_diversity_isolation,
     fix_diversity_isolation
 )
-from kmedoids import kmedoids_pam
-from group_gen_intake import process_google_form
+from .kmedoids import kmedoids_pam
+from .group_gen_intake import process_google_form
 
 app = FastAPI(title="GroupGen API")
 

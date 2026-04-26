@@ -12,13 +12,14 @@ The project is divided into two distinct phases:
 ```
 GroupGen/
 ├── backend/
-│   ├── __init__.py
-│   ├── data_loader.py       # Loads and validates CSV data
-│   ├── clustering.py        # Core clustering logic & locking mechanisms
-│   ├── kmedoids.py          # Custom K-Medoids (PAM) implementation
-│   ├── evaluate_clustering.py # Metrics (Silhouette, Entropy, Variance)
-│   ├── run_full_evaluation.py # PART 1: The Evaluation Script
-│   ├── generate_groups.py     # PART 2: The Group Generator
+│   ├── src/
+│   │   ├── __init__.py
+│   │   ├── data_loader.py       # Loads and validates CSV data
+│   │   ├── clustering.py        # Core clustering logic & locking mechanisms
+│   │   ├── kmedoids.py          # Custom K-Medoids (PAM) implementation
+│   │   ├── evaluate_clustering.py # Metrics (Silhouette, Entropy, Variance)
+│   │   ├── run_full_evaluation.py # PART 1: The Evaluation Script
+│   │   ├── generate_groups.py     # PART 2: The Group Generator
 │   └── data/
 │       └── sample_students100.csv
 |       └── sample_students30.csv      # Example data file
@@ -80,7 +81,7 @@ It generates comparison tables, skill variance reports, and visual plots.
 How to Run:
 
 ```bash
-python -m backend.run_full_evaluation
+python -m backend.src.run_full_evaluation
 
 ```
 
@@ -107,7 +108,7 @@ This script handles real-world logistics:
 How to Run:
 
 ```bash
-python -m backend.generate_groups
+python -m backend.src.generate_groups
 ```
 
 ### What to Expect

@@ -3,8 +3,8 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import pairwise_distances
 
-from backend.data_loader import load_student_data, preprocess_data
-from backend.clustering import (
+from backend.src.data_loader import load_student_data, preprocess_data
+from backend.src.clustering import (
     compute_feature_vector,
     compute_distance_matrix,
     enforce_group_size,
@@ -13,7 +13,7 @@ from backend.clustering import (
     check_diversity_isolation,
     fix_diversity_isolation,
 )
-from backend.kmedoids import kmedoids_pam
+from backend.src.kmedoids import kmedoids_pam
 
 SKILL_COLS = ["Motivation", "Self_Esteem", "Work_Ethic"]
 

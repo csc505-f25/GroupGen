@@ -14,6 +14,7 @@ type GroupStats = {
   avg_motivation: number;
   avg_work_ethic: number;
   learning_styles: string[];
+  gender_balance: { [gender: string]: number };
 };
 
 type Group = {
@@ -135,7 +136,10 @@ export default function Home() {
               type="number"
               min="2" max="50"
               value={groupSize}
-              onChange={(e) => setGroupSize(parseInt(e.target.value))}
+              onChange={(e) => {
+                const val = parseInt(e.target.value);
+                setGroupSize(Number.isNaN(val) ? 5 : val);
+              }}
               className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>

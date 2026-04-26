@@ -13,11 +13,14 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import gower
+import os
+import pickle
 from typing import List, Dict, Tuple, Optional
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.metrics import pairwise_distances
 from sklearn.decomposition import PCA
-from kmedoids import kmedoids_pam
+import pickle
+from .kmedoids import kmedoids_pam
 
 # ==========================================
 # 1. Feature Engineering & Distances
@@ -136,7 +139,7 @@ def enforce_group_size(
     return new_labels
     
 
-def compute_feature_vector(df):
+def compute_feature_vector(df, save_scaler_path=None, load_scaler_path=None):
     """
     Convert student features to numerical vectors for clustering.
     
@@ -148,6 +151,8 @@ def compute_feature_vector(df):
     
     Args:
         df: DataFrame with student data
+        save_scaler_path: Optional path to save the fitted scaler
+        load_scaler_path: Optional path to load a pre-fitted scaler
         
     Returns:
         NxM numpy array where N is number of students, M is number of features
@@ -155,17 +160,27 @@ def compute_feature_vector(df):
     # Extract numeric features
     numeric_features = df[['Motivation', 'Self_Esteem', 'Work_Ethic']].values
     
-    # Encode Learning_Style using OneHotEncoder
-    one_hot_encoder = OneHotEncoder(sparse_output=False)
+    # Encode Learning_Style using OneHotEncoder with fixed categories
+    # This prevents dimension mismatch crashes on small classrooms that happen to miss a learning style
+    one_hot_encoder = OneHotEncoder(categories=[['Visual', 'Auditory', 'Kinesthetic']], sparse_output=False, handle_unknown='ignore')
     learning_style_encoded = one_hot_encoder.fit_transform(df[['Learning_Style']])
     
     # Combine features
     features = np.hstack([numeric_features, learning_style_encoded])
     
     # Normalize features using StandardScaler for better clustering
-    scaler = StandardScaler()
-    features = scaler.fit_transform(features)
-    
+    if load_scaler_path and os.path.exists(load_scaler_path):
+        with open(load_scaler_path, 'rb') as f:
+            scaler = pickle.load(f)
+        features = scaler.transform(features)
+    else:
+        scaler = StandardScaler()
+        features = scaler.fit_transform(features)
+        
+        if save_scaler_path:
+            with open(save_scaler_path, 'wb') as f:
+                pickle.dump(scaler, f)
+                
     return features
 
 
@@ -199,62 +214,7 @@ def compute_distance_matrix(df, feature_matrix):
 # 2. Clustering Algorithms
 # ==========================================
 
-def kmeans_custom(
-    x: np.ndarray, 
-    K: int, random_state: Optional[int] = None, 
-    max_iter: int = 300, 
-    return_centroids: bool = False, 
-    metric: str = 'euclidean'
-    ):
 
-    """
-    Custom K-Means clustering implementation.
-    
-    Args:
-        x: NxM feature matrix (N students, M features)
-        K: Number of clusters
-        random_state: Random seed for reproducibility
-        max_iter: Maximum number of iterations
-        
-    Returns:
-        Array of cluster labels (0 to K-1) for each student
-        If return_centroids=True, also returns centroids array
-    """
-    # Set random seed for reproducibility
-    if random_state is not None:
-        np.random.seed(random_state)
-    
-    # Random initialization of centroids
-    idxs = np.random.choice(x.shape[0], K, replace=False)
-    centroids = np.atleast_2d(x[idxs].copy())  # ensures centroids is always 2D
-    prev = np.full(x.shape[0], -1, dtype=int)
-
-    for iteration in range(max_iter):
-        # assignment step: compute distances from each point to each centroid
-        # support euclidean (L2) and manhattan (L1)
-        if metric == 'euclidean':
-            distances = np.sqrt(((x[:, np.newaxis, :] - centroids[np.newaxis, :, :]) ** 2).sum(axis=2))
-        elif metric == 'manhattan':
-            distances = np.abs(x[:, np.newaxis, :] - centroids[np.newaxis, :, :]).sum(axis=2)
-        else:
-            raise ValueError(f"Unsupported metric: {metric}")
-
-        C = np.argmin(distances, axis=1)
-        
-        # centroid update
-        new_centroids = np.array([x[C==k].mean(axis=0) if np.any(C==k) else centroids[k]
-                                for k in range(K)])
-        
-        # check for convergence
-        if np.array_equal(C, prev):
-            break
-        prev = C.copy()
-        centroids = new_centroids
-
-    
-    if return_centroids:
-        return C, centroids
-    return C
 
 
 def initial_clustering(
@@ -374,7 +334,15 @@ def visualize_clustering(
     ax.legend(handles=handles, title='Clusters', bbox_to_anchor=(1.02, 1), loc='upper left')
 
     plt.tight_layout()
-    plt.show()
+    # Save the plot explicitly using the metric name, replacing spaces with underscores
+    import os
+    safe_metric = metric.lower().replace(' ', '_').replace('(', '').replace(')', '').replace('+', '_')
+    save_dir = os.path.join("backend", "output_plots")
+    os.makedirs(save_dir, exist_ok=True)
+    save_path = os.path.join(save_dir, f"{safe_metric}.png")
+    plt.savefig(save_path)
+    print(f"Saved visualization to {save_path}")
+    plt.close() # Close to prevent showing and hanging the python script
 
     # Print concise cluster statistics (kept from the original function)
     print("\n" + "="*60)

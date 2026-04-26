@@ -6,6 +6,7 @@ numpy>=1.23.0
 scikit-learn>=1.2.0
 # scikit-learn-extra>=0.3.0  # Optional: For K-Medoids (requires C++ build tools)
 # Note: You can use sklearn.cluster.KMeans instead, or implement K-Medoids yourself
+gower>=0.1.2  # Mixed-type distance matrix (used by backend/src/clustering.py)
 
 # Optional: for distance computations
 scipy>=1.9.0
@@ -17,3 +18,8 @@ matplotlib>=3.6.0
 fastapi>=0.95.0
 uvicorn>=0.22.0
 python-multipart>=0.0.6
+
+# Deep Learning (Multimodal)
+torch>=2.0.0
+transformers>=4.30.0
+tqdm>=4.65.0

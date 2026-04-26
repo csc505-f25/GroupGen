@@ -4,12 +4,12 @@ from pathlib import Path
 import os
 
 # Imports
-from data_loader import load_student_data, preprocess_data
-from clustering import (compute_feature_vector, compute_distance_matrix, enforce_group_size, check_gender_isolation, fix_gender_isolation, kmeans_custom,
+from .data_loader import load_student_data, preprocess_data
+from .clustering import (compute_feature_vector, compute_distance_matrix, enforce_group_size, check_gender_isolation, fix_gender_isolation, kmeans_custom,
     check_diversity_isolation,  # <-- Added
     fix_diversity_isolation     # <-- Added
 )
-from kmedoids import kmedoids_pam
+from .kmedoids import kmedoids_pam
 
 
 # Configuration & Input
@@ -32,10 +32,12 @@ def calculate_group_config(n_students: int, target_size: int) -> int:
         print(f"Target size ({target_size}) > Student count ({n_students}). Creating 1 group.")
         return 1
         
-    n_groups = n_students // target_size
+    n_groups = max(1, int(np.ceil(n_students / target_size)))
     
-    # Handle edge case where division results in 0 (should be caught above, but safety first)
-    if n_groups < 1: n_groups = 1
+    # Prevent individual isolation (groups of 1) by reducing group count
+    # until the minimum mathematical group size is at least 2.
+    while n_groups > 1 and n_students // n_groups < 2:
+        n_groups -= 1
     
     print(f"   > Configuration: {n_groups} groups for {n_students} students.")
     return n_groups
@@ -66,20 +68,21 @@ def run_grouping_pipeline(df: pd.DataFrame, n_groups: int, target_size: int) -> 
         labels, 
         target_size, 
         feature_matrix=feature_matrix, 
-        metric='manhattan' 
+        metric='manhattan',
+        expected_n_clusters=n_groups
     )
 
     # 4. Gender Constraints
     print("   > [Step 4] Optimizing Gender Balance...")
     isolated_gender = check_gender_isolation(df, labels)
     if isolated_gender:
-        labels = fix_gender_isolation(df, labels, euc_dist, isolated_gender)
+        labels = fix_gender_isolation(df, labels, dist_manhattan, isolated_gender)
 
     # 5. Diversity Constraints (NEW STEP)
     print("   > [Step 5] Optimizing Diversity Balance...")
     isolated_diversity = check_diversity_isolation(df, labels)
     if isolated_diversity:
-        labels = fix_diversity_isolation(df, labels, euc_dist, isolated_diversity)
+        labels = fix_diversity_isolation(df, labels, dist_manhattan, isolated_diversity)
     
     return labels
 
@@ -173,12 +176,9 @@ def main():
 
     # Configuration
     #INPUT_CSV = "backend/data/sample_students.csv"
-     # Get the directory where THIS script (generate_groups.py) is located
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-    # Construct the full path specifically pointing to the data folder next to this script
-    INPUT_CSV = os.path.join(BASE_DIR, "data", "actual_students.csv")
-    OUTPUT_CSV = "backend/output/final_groups.csv"
+    # Construct the full path pointing to the true root data folder
+    INPUT_CSV = str(Path(__file__).resolve().parent.parent / "data" / "actual_students.csv")
+    OUTPUT_CSV = str(Path(__file__).resolve().parent.parent / "output" / "final_groups.csv")
 
     # 1. Load Data
     print("1. Loading Data...")
