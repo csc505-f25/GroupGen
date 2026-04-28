@@ -12,7 +12,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 's
 
 from .clustering import compute_feature_vector, visualize_clustering, enforce_group_size
 from .kmedoids import kmedoids_pam
-from deep_learning.models.multimodal_autoencoder import MultimodalAutoencoder
+from deep_learning.models.multimodal_autoencoder import GroupGenEncoder
 
 def compare_multimodal_architectures(csv_path, weights_path, desired_group_size=4):
     print("Loading dataset...")
@@ -21,7 +21,7 @@ def compare_multimodal_architectures(csv_path, weights_path, desired_group_size=
 
     # 1. BASELINE: Extract standard Tabular Features
     print("Computing Baseline Tabular Matrix...")
-    scaler_path = os.path.join(os.path.dirname(weights_path), 'standard_scaler.pkl')
+    scaler_path = os.path.join(os.path.dirname(os.path.dirname(weights_path)), 'data', 'standard_scaler.pkl')
     tabular_matrix = compute_feature_vector(df, load_scaler_path=scaler_path)
     tabular_dim = tabular_matrix.shape[1]
 
@@ -31,8 +31,8 @@ def compare_multimodal_architectures(csv_path, weights_path, desired_group_size=
     texts = df['Text'].tolist() if 'Text' in df.columns else [""] * len(df)
     tokens = tokenizer(texts, padding='max_length', max_length=128, truncation=True, return_tensors='pt')
     
-    print(f"Loading Trained MultimodalAutoencoder weights from {weights_path}...")
-    model = MultimodalAutoencoder(tabular_input_dim=tabular_dim, freeze_text=True)
+    print(f"Loading Trained GroupGenEncoder weights from {weights_path}...")
+    model = GroupGenEncoder(tabular_input_dim=tabular_dim, freeze_text=True)
     model.load_state_dict(torch.load(weights_path, map_location='cpu'))
     model.eval()
     
@@ -126,10 +126,10 @@ def compare_multimodal_architectures(csv_path, weights_path, desired_group_size=
 
 if __name__ == "__main__":
     base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-    weights_file = os.path.join(base_dir, 'backend', 'output', 'multimodal_autoencoder.pt')
+    weights_file = os.path.join(base_dir, 'backend', 'output', 'GroupGen_Encoder_Final_Safe.pt')
     
-    # Load the master 5000-student pool
-    pool_csv = os.path.join(base_dir, 'backend', 'data', 'synthetic_multimodal_5000.csv')
+    # Load the master 4000-student pool
+    pool_csv = os.path.join(base_dir, 'backend', 'data', 'synthetic_train_4000.csv')
     pool_df = pd.read_csv(pool_csv)
     
     for n_size in [30, 40, 50, 60]:

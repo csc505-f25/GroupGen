@@ -45,9 +45,9 @@ class TextBranch(nn.Module):
         cls_embedding = last_hidden_state[:, 0, :]
         return cls_embedding
 
-class MultimodalAutoencoder(nn.Module):
+class GroupGenEncoder(nn.Module):
     def __init__(self, tabular_input_dim, tabular_hidden_dim=64, bottleneck_dim=16, freeze_text=True):
-        super(MultimodalAutoencoder, self).__init__()
+        super(GroupGenEncoder, self).__init__()
         
         # 1. Initiating the Branches
         self.tabular_branch = TabularBranch(tabular_input_dim, tabular_hidden_dim)

@@ -1,98 +1,79 @@
-"""
-Generates 5000 synthetic student profiles including Free-Response text
-so we can train the Multimodal Autoencoder locally without API keys.
-"""
-
 import pandas as pd
 import numpy as np
 import random
 import os
 
-def generate_synthetic_multimodal(n_samples=5000):
+def generate_leakage_safe_data(n_seeds=1000):
     np.random.seed(42)
     random.seed(42)
 
-    names = [f"Student_{i}" for i in range(n_samples)]
-    genders = np.random.choice(['Male', 'Female', 'Non-Binary'], n_samples, p=[0.48, 0.48, 0.04])
-    diversities = np.random.choice(
-        ['Caucasian', 'Asian', 'Hispanic/LatinX', 'Black/African', 'Native American/ Pacific Islander'], 
-        n_samples
-    )
-    learning_styles = np.random.choice(['Visual', 'Auditory', 'Kinesthetic'], n_samples)
+    # 1. GENERATE THE 1000 UNIQUE SEED STUDENTS
+    # ---------------------------------------------------------
+    def create_profiles(n):
+        learning_styles = np.random.choice(['Visual', 'Auditory', 'Kinesthetic'], n)
+        motivation = np.clip(np.round(np.random.normal(3, 1, n)), 1, 4).astype(int)
+        self_esteem = np.clip(np.round(np.random.normal(3, 1, n)), 1, 4).astype(int)
+        work_ethic = np.clip(np.round(np.random.normal(3, 1, n)), 1, 4).astype(int)
+        
+        # Text Snippets (Same as your original logic)
+        mot_high = ["I am very driven...", "I love diving deep...", "I always aim for an A+..."]
+        mot_low = ["I prefer just doing...", "I'm not looking to stress...", "Honestly I struggle..."]
+        we_high = ["I usually finish my code...", "I'm extremely punctual...", "I will happily spend..."]
+        we_low = ["I have a lot of other classes...", "I tend to leave things...", "I struggle with deadlines..."]
+        style_dict = {
+            'Visual': ["I need to see charts...", "I prefer writing on whiteboards..."],
+            'Auditory': ["I work best when we talk...", "I like bouncing ideas..."],
+            'Kinesthetic': ["I learn by doing...", "I don't like reading manuals..."]
+        }
+
+        texts = []
+        for m, w, l in zip(motivation, work_ethic, learning_styles):
+            parts = []
+            if m >= 3: parts.append(random.choice(mot_high))
+            elif m <= 2: parts.append(random.choice(mot_low))
+            if w >= 3: parts.append(random.choice(we_high))
+            elif w <= 2: parts.append(random.choice(we_low))
+            parts.append(random.choice(style_dict[l]))
+            random.shuffle(parts)
+            texts.append(" ".join(parts))
+            
+        return pd.DataFrame({
+            'Learning_Style': learning_styles, 'Motivation': motivation,
+            'Self_Esteem': self_esteem, 'Work_Ethic': work_ethic, 'Text': texts
+        })
+
+    seeds_df = create_profiles(n_seeds)
+
+    # 2. PERFORM THE 80/20 SPLIT AT THE SEED LEVEL
+    # ---------------------------------------------------------
+    seeds_df = seeds_df.sample(frac=1, random_state=42).reset_index(drop=True)
+    train_seeds = seeds_df.iloc[:800].copy()
+    val_seeds = seeds_df.iloc[800:].copy()
+
+    # 3. AUGMENT THE TRAINING SEEDS (5x to get 4000)
+    # ---------------------------------------------------------
+    train_augmented = []
+    for _ in range(5):
+        temp = train_seeds.copy()
+        # Add slight Gaussian noise to numeric values to create 'clones'
+        for col in ['Motivation', 'Self_Esteem', 'Work_Ethic']:
+            noise = np.random.normal(0, 0.1, size=len(temp))
+            temp[col] = np.clip(np.round(temp[col] + noise), 1, 4).astype(int)
+        train_augmented.append(temp)
     
-    # Generate scores with some bell curve logic
-    motivation = np.clip(np.round(np.random.normal(3, 1, n_samples)), 1, 4).astype(int)
-    self_esteem = np.clip(np.round(np.random.normal(3, 1, n_samples)), 1, 4).astype(int)
-    work_ethic = np.clip(np.round(np.random.normal(3, 1, n_samples)), 1, 4).astype(int)
+    train_final = pd.concat(train_augmented).sample(frac=1).reset_index(drop=True)
 
+    # 4. SAVE THE SEPARATE FILES
     # ---------------------------------------------------------
-    # Text Correlation Dictionaries
-    # ---------------------------------------------------------
-    mot_high = [
-        "I am very driven and usually take the lead on making sure we hit all the rubric points.",
-        "I love diving deep into the material and organizing the progression of our work.",
-        "I always aim for an A+ and will happily manage the team's schedule."
-    ]
-    mot_low = [
-        "I prefer just doing whatever part is assigned to me so I can clock out.",
-        "I'm not looking to stress over this, just want to get it done.",
-        "Honestly I struggle to stay engaged unless someone tells me exactly what to do."
-    ]
-
-    we_high = [
-        "I usually finish my code way before the deadline.",
-        "I'm extremely punctual and expect my teammates to also contribute their fair share on time.",
-        "I will happily spend the weekend polishing our project until it is perfect."
-    ]
-    we_low = [
-        "I have a lot of other classes so this isn't my main priority.",
-        "I tend to leave things to the last minute but it usually works out.",
-        "I struggle with deadlines sometimes."
-    ]
-
-    style_dict = {
-        'Visual': ["I need to see charts and diagrams to understand the architecture.", "I prefer writing on whiteboards to plan."],
-        'Auditory': ["I work best when we talk through the architecture out loud.", "I like bouncing ideas off people verbally."],
-        'Kinesthetic': ["I learn by doing, so just let me start coding the MVP.", "I don't like reading manuals, I just want to start building hands-on."]
-    }
-
-    # Generate the text paragraphs
-    texts = []
-    for m, w, l in zip(motivation, work_ethic, learning_styles):
-        text_parts = []
-        
-        # Motivation logic
-        if m >= 3: text_parts.append(random.choice(mot_high))
-        elif m <= 2: text_parts.append(random.choice(mot_low))
-            
-        # Work ethic logic
-        if w >= 3: text_parts.append(random.choice(we_high))
-        elif w <= 2: text_parts.append(random.choice(we_low))
-            
-        # Learning style logic
-        text_parts.append(random.choice(style_dict[l]))
-        
-        random.shuffle(text_parts) # Shuffle so it reads loosely like a paragraph
-        texts.append(" ".join(text_parts))
-
-    # Compile DataFrame
-    df = pd.DataFrame({
-        'Name': names,
-        'Gender': genders,
-        'Diversity': diversities,
-        'Learning_Style': learning_styles,
-        'Motivation': motivation,
-        'Self_Esteem': self_esteem,
-        'Work_Ethic': work_ethic,
-        'Text': texts
-    })
-
-    # Save to data directory
     output_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'data')
     os.makedirs(output_dir, exist_ok=True)
-    out_path = os.path.join(output_dir, 'synthetic_multimodal_5000.csv')
-    df.to_csv(out_path, index=False)
-    print(f"Generated {n_samples} multimodal synthetic profiles at {out_path}!")
+
+    train_final.to_csv(os.path.join(output_dir, 'synthetic_train_4000.csv'), index=False)
+    val_seeds.to_csv(os.path.join(output_dir, 'synthetic_val_1000.csv'), index=False)
+
+    print("✅ Successfully generated leakage-safe datasets!")
+    print(f"Training: 4000 students (800 seeds augmented 5x)")
+    print(f"Validation: 200 students (Unique individuals never seen by model)")
 
 if __name__ == "__main__":
-    generate_synthetic_multimodal()
+    generate_leakage_safe_data()

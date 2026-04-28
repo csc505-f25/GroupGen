@@ -95,7 +95,7 @@ def enforce_group_size(
             for r_id in receivers:
                 mask = (new_labels == r_id)
                 if np.any(mask):
-                    receiver_centers[r_id] = feature_matrix[mask].mean(axis=0)
+                    receiver_centers[r_id] = np.median(feature_matrix[mask], axis=0)
                 else:
                     # If empty, center is 0 (should rarely happen in this flow)
                     receiver_centers[r_id] = np.zeros(feature_matrix.shape[1])

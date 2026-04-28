@@ -24,7 +24,7 @@ ENVIRONMENT = detect_environment()
 print(f"Environment Detected: {ENVIRONMENT.upper()}")
 
 # Path configuration
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # Go up to GroupGen root
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Go up to GroupGen root
 
 # Auto-select device based on environment
 if ENVIRONMENT == 'colab':
@@ -76,6 +76,7 @@ def compute_feature_vector_standalone(df, save_scaler_path=None, load_scaler_pat
 # ============================================================
 # IMPORT MODEL (from local module)
 # ============================================================
+sys.path.insert(0, os.path.join(BASE_DIR, 'backend', 'deep_learning', 'models'))
 from multimodal_autoencoder import GroupGenEncoder
 
 # ============================================================
@@ -86,8 +87,8 @@ def main():
     print("PHASE 1: Loading Leakage-Safe Datasets...")
     
     # 1. Load the separate files (Ensure these are uploaded to Colab)
-    train_path = 'synthetic_train_4000.csv'
-    val_path = 'synthetic_val_1000.csv'
+    train_path = os.path.join(BASE_DIR, 'backend', 'data', 'synthetic_train_4000.csv')
+    val_path = os.path.join(BASE_DIR, 'backend', 'data', 'synthetic_val_1000.csv')
     
     if not (os.path.exists(train_path) and os.path.exists(val_path)):
         raise FileNotFoundError("Safe datasets not found. Ensure train_4000 and val_1000 are uploaded.")

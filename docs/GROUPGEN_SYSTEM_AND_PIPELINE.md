@@ -280,7 +280,7 @@ The sample CSV in the repo is under **`backend/data/sample_students.csv`**, so t
 
 | File | Role |
 |------|------|
-| `backend/deep_learning/models/multimodal_autoencoder.py` | `MultimodalAutoencoder` (tabular branch + DistilBERT, fusion, bottleneck). |
+| `backend/deep_learning/models/multimodal_autoencoder.py` | `GroupGenEncoder` (tabular branch + DistilBERT, fusion, bottleneck). |
 | `backend/deep_learning/scripts/train_autoencoder.py` | Dataset class calls `compute_feature_vector` from `backend/src/clustering.py`; trains reconstruction MSE on tabular output; saves weights under **`backend/deep_learning/../../output/model_weights/`** → **`backend/output/model_weights/multimodal_autoencoder.pt`**. |
 | `backend/deep_learning/scripts/generate_multimodal_data.py` | Synthetic data generation (see script for outputs). |
 | `backend/src/evaluate_multimodal.py` | Loads CSV + weights, compares baseline tabular vs early/late fusion clustering; **`__main__` expects weights at `backend/output/multimodal_autoencoder.pt`**, not necessarily the `model_weights` subdirectory where training saves by default. |

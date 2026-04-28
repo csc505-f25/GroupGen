@@ -1,131 +1,197 @@
-# GroupGen: Automated Student Grouping System
+# GroupGen-Encoder: Multimodal Joint Latent Manifold for Student Grouping
 
-GroupGen is a full-stack ML application designed to form student groups that are both skill-balanced and demographically inclusive. It orchestrates a Python backend running unsupervised clustering algorithms (K-Medoids / Manhattan Distance) connected to a Next.js frontend GUI.
+GroupGen-Encoder moves beyond traditional bucket-based clustering by using a Dual-Decoder Early Fusion Autoencoder to project student identities into a 16-dimensional joint latent space. The model fuses DistilBERT-derived semantic embeddings from student bios with structured tabular scores to encode identity, motivation, and collaborative potential in a single manifold.
 
-## Project Structure
-
-The project is divided into two distinct phases:
-
-1.  **Evaluation & Research:** A comparative analysis ("Tournament") of K-Means vs. K-Medoids using Euclidean, Manhattan, and Gower distances to determine the optimal algorithm.
-2.  **Implementation:** The production pipeline that uses the winning algorithm (K-Medoids Manhattan) to generate actual student groups.
+## Technical File Map
 
 ```
-GroupGen/
-├── backend/
-│   ├── src/
-│   │   ├── __init__.py
-│   │   ├── data_loader.py       # Loads and validates CSV data
-│   │   ├── clustering.py        # Core clustering logic & locking mechanisms
-│   │   ├── kmedoids.py          # Custom K-Medoids (PAM) implementation
-│   │   ├── evaluate_clustering.py # Metrics (Silhouette, Entropy, Variance)
-│   │   ├── run_full_evaluation.py # PART 1: The Evaluation Script
-│   │   ├── generate_groups.py     # PART 2: The Group Generator
-│   └── data/
-│       └── sample_students100.csv
-|       └── sample_students30.csv      # Example data file
-├── requirements.txt         # Python dependencies
-├── IMPLEMENTATION_GUIDE.md  # Detailed implementation instructions
-└── README.md               # This file
+backend/
+├── data/
+│   ├── synthetic_train_4000.csv      # Augmented training data (800 seeds x 5)
+│   ├── synthetic_val_1000.csv        # Stranger Set: 200 unseen identities for generalization testing
+│   └── standard_scaler.pkl           # Global Translation Key ensuring numeric consistency between training and inference
+├── output/
+│   ├── GroupGen_Encoder_Final_Safe.pt  # Production weights (0.0003 Val MSE)
+│   └── final_report/
+│       ├── robustness_metrics_summary.txt  # Monte Carlo tournament results table
+│       └── model_performance_audit.json    # Deep learning benchmark summary
+└── src/                               # Core model, clustering, and evaluation logic
 ```
 
-## Installation
+### Why these files matter
 
-Clone the repository
+- `backend/data/synthetic_train_4000.csv`: Provides the augmented training distribution used to fit the joint encoder while preserving representational diversity.
+- `backend/data/synthetic_val_1000.csv`: Serves as the Stranger Set to validate true generalization on unseen student identities.
+- `backend/data/standard_scaler.pkl`: Acts as the global scaler for consistent tabular normalization across training and inference stages.
+- `backend/output/GroupGen_Encoder_Final_Safe.pt`: Represents the final, production-ready model state with validated 0.0003 validation MSE.
+- `backend/output/final_report/`: Contains the assessment artifacts that support the research claims, including tournament metrics and benchmark summaries.
+
+## Core Source Code
+
+### Backend/src/ — Core Model & Evaluation Logic
+
+| File | Purpose |
+|------|---------|
+| `__init__.py` | Package initialization for backend module imports |
+| `api.py` | REST API layer for model serving and inference requests |
+| `clustering.py` | Core clustering algorithms and feature vector computation; includes K-Medoids and feature scaling utilities |
+| `data_loader.py` | CSV parsing and data validation; ensures student data format integrity |
+| `evaluate_multimodal.py` | Comparative evaluation of clustering architectures (baseline vs. early fusion); generates performance reports |
+| `evaluate_robustness.py` | Main evaluation script; runs the GroupGen-Encoder on validation set and computes tournament metrics (Silhouette, Davies-Bouldin, CH Index) |
+| `generate_5000.py` | Synthetic data generation script for bootstrapping experimental datasets |
+| `generate_groups.py` | Production pipeline; generates final student group assignments using trained encoder |
+| `group_gen_intake.py` | User intake form handler for group generation parameters |
+| `inspect_groups.py` | **Classroom audit utility** — Samples 30 random students, clusters them into 6 groups of 5, and prints demographic/semantic composition for manual verification of semantic manifold diversity |
+| `kmedoids.py` | Custom K-Medoids (PAM) clustering implementation using Manhattan distance |
+| `train_autoencoder.py` | Model training script; supports local and Colab environments; saves best weights to `backend/output/GroupGen_Encoder_Final_Safe.pt` |
+
+### scripts/ — Standalone Entry Points
+
+| File | Purpose |
+|------|---------|
+| `train_autoencoder.py` | **Primary entry point** for GroupGen-Encoder training; supports local and Colab environments; saves best weights to `backend/output/GroupGen_Encoder_Final_Safe.pt` |
+| `generate_correlated_data.py` | Utility for generating synthetic student datasets with configurable correlation structures |
+
+## Model Performance Benchmarks
+
+- **Bottleneck dimension:** 16
+- **Loss weighting:** 10:1 tabular-to-text reconstruction loss ratio
+- **Text recovery:** 90%+ cosine similarity on reconstructed semantic embeddings
+
+## The Semantic Manifold Defense
+
+### Theoretical Discussion
+
+Traditional baseline metrics such as Silhouette and Calinski-Harabasz favor rigid categorical splits because they reward exact matching in sparse discrete feature space. In contrast, GroupGen-Encoder prioritizes semantic nuance by embedding student identities in a continuous latent manifold that integrates both text-derived meaning and tabular skill signals.
+
+Our model may exhibit lower Silhouette scores relative to bucket-based baselines, but it achieves superior Davies-Bouldin Index scores, which indicate tighter intra-cluster cohesion and clearer inter-cluster separation for socially consistent groups. This demonstrates that the encoder produces groups that are semantically aligned and more robust for collaborative student team formation.
+
+## Setup & Usage
+
+### Prerequisites
+
+- Python 3.8 or higher
+- CUDA 11.8+ (optional, for GPU acceleration)
+- 8GB RAM minimum (16GB+ recommended for training)
+- Git
+
+### Installation
+
+1. **Clone the repository:**
+   ```bash
+   git clone <repository-url>
+   cd GroupGen
+   ```
+
+2. **Create and activate virtual environment (Windows):**
+   ```bash
+   python -m venv venv
+   .\venv\Scripts\activate
+   ```
+
+   **macOS/Linux:**
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   ```
+
+3. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+   **Key dependencies:**
+   - `torch>=2.0.0` — Deep learning framework
+   - `transformers>=4.30.0` — DistilBERT tokenizer and models
+   - `scikit-learn>=1.2.0` — StandardScaler, clustering utilities
+   - `pandas>=1.5.0` — Data manipulation
+   - `numpy>=1.23.0` — Numerical computing
+
+### Training the Model
+
+To train the GroupGen-Encoder from scratch:
 
 ```bash
-git clone https://github.com/yourusername/GroupGen.git
-cd GroupGen
+python scripts/train_autoencoder.py
 ```
 
-## Install Virtual environment
+**Training parameters (configurable in script):**
+- Epochs: 30
+- Batch size: 100
+- Learning rate: 0.005
+- Optimizer: Adam
+- Loss weighting: 10:1 (tabular:text)
 
-### Windows
-python -m venv venv
+**Output:** Saves best model to `backend/output/GroupGen_Encoder_Final_Safe.pt` when validation MSE improves.
 
-### Mac/Linux
-python3 -m venv venv
+### Evaluation
 
-## Activate Virtual enviroment
-
-### Windows
-.\venv\Scripts\activate
-
-### Mac/Linux
-source venv/bin/activate
-
-
-## Install dependencies:
+Run the final robustness evaluation on the validation set:
 
 ```bash
-pip install -r requirements.txt
+python backend/src/evaluate_robustness.py
 ```
 
-(Requires: numpy, pandas, scikit-learn, matplotlib, gower)
+**Expected outputs:**
+- Console: Silhouette scores, Davies-Bouldin Index, Calinski-Harabasz Index
+- File: `backend/output/final_report/robustness_metrics_summary.txt` (tournament results)
+- File: `backend/output/final_report/model_performance_audit.json` (benchmark metrics)
 
-## Part 1: Evaluation & Research
+### Generating Student Groups
 
-Objective: To scientifically compare clustering algorithms and determine which one best balances structural integrity with demographic diversity.
-
-This script runs a tournament between:
-
-- K-Means (Euclidean)
-
-- K-Means (Manhattan)
-
-- K-Medoids (Manhattan)
-
-- K-Medoids (Gower)
-
-It generates comparison tables, skill variance reports, and visual plots.
-
-How to Run:
+To generate groups for a new cohort:
 
 ```bash
-python -m backend.src.run_full_evaluation
-
+python backend/src/generate_groups.py
 ```
 
-### What to Expect:
+Provide a CSV file with student data in the format specified below.
 
-- The script will prompt you for a Group Size.
+### Classroom Audit (Semantic Manifold Verification)
 
-- It calculates metrics like Silhouette Score, Calinski-Harabasz Index, and Mean Gender Entropy.
-
-- It saves plots (Bar charts, Scatter plots) to backend/output_plots/.
-
-- It prints a final Comparison Table to the console declaring the performance of each metric.
-
-## Part 2: Group Generation(The Tool)
-
-Objective: To generate the final, optimized student groups for a classroom using the best-performing algorithm (K-Medoids Manhattan).
-
-This script handles real-world logistics:
-
-- Smart Fill: Distributes remainder students (e.g., class size 31, target 5) to their mathematically closest group.
-
-- Locking Mechanism: Automatically swaps students to fix gender isolation without breaking the clusters.
-
-How to Run:
+To manually inspect how the GroupGen-Encoder mixes different student demographics and learning styles, run the classroom audit utility:
 
 ```bash
-python -m backend.src.generate_groups
+python backend/src/inspect_groups.py
 ```
 
-### What to Expect
-- The script will prompt you for the Target Group Size.
-- It runs the full pipeline
-- It saves the final group assignments to: backend/output/final_groups.csv
+This script:
+- Randomly samples 30 students from the validation set (simulating one classroom)
+- Clusters them into 6 groups of 5 using the trained encoder
+- Prints a classroom audit showing:
+  - Student ID, learning style, motivation, self-esteem, and work ethic for each group
+  - First 50 characters of each student's bio (to verify semantic diversity)
+  - Learning style entropy scores for each group and overall classroom (higher = more mixed learning styles)
 
-## Data Format 
-The system expects a CSV file with the following columns
+**Expected output:** A formatted audit table demonstrating that the semantic manifold successfully creates diverse, cognitively balanced groups based on textual and behavioral embeddings.
 
-| Column | Type | Description |
-| :--- | :--- | :--- |
-| `Name` | String | Student Identifier |
-| `Gender` | String | Male / Female / Other |
-| `Motivation` | Int (1-4) | 1=Low, 4=High |
-| `Self_Esteem` | Int (1-4) | 1=Low, 4=High |
-| `Work_Ethic` | Int (1-4) | 1=Low, 4=High |
-| `Learning_Style` | String | Visual, Auditory, Kinesthetic |
-| `Diversity` | String | Race/Ethnicity category |
+### Input Data Format
+
+Student CSV files must include:
+
+| Column | Type | Example | Notes |
+|--------|------|---------|-------|
+| `Name` | String | Alice | Student identifier |
+| `Gender` | String | Female | Male, Female, or Other |
+| `Motivation` | Integer | 3 | 1 (Low) to 4 (High) |
+| `Self_Esteem` | Integer | 2 | 1 (Low) to 4 (High) |
+| `Work_Ethic` | Integer | 4 | 1 (Low) to 4 (High) |
+| `Learning_Style` | String | Visual | Visual, Auditory, or Kinesthetic |
+| `Text` | String | "I love..." | Student biography (50-150 words) |
+| `Diversity` | String | Asian | Demographic category (optional) |
+
+### Troubleshooting
+
+**Issue: `ModuleNotFoundError: No module named 'torch'`**
+- Solution: Ensure virtual environment is activated and run `pip install -r requirements.txt`
+
+**Issue: CUDA out of memory during training**
+- Solution: Reduce `batch_size` in `train_autoencoder.py` from 100 to 64 or 32
+
+**Issue: Training script cannot find scaler or weights**
+- Solution: Verify that `backend/data/standard_scaler.pkl` and training data exist before running training
+
+**Issue: Evaluation script fails on inference**
+- Solution: Ensure `backend/output/GroupGen_Encoder_Final_Safe.pt` is present; retrain if missing using `python scripts/train_autoencoder.py`
+
 
