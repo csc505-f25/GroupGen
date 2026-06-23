@@ -1,161 +1,190 @@
-import pandas as pd
-import numpy as np
-import sys
-import os
+"""
+Convert raw Google Forms CSV exports into GroupGen's seven clustering columns.
 
-# --- Scoring helpers ---------------------------------------------------------
+Section boundaries are detected via four **magic wand** divider columns.
+Learning style uses the paper VAK catalog (``vak_answer_catalog``).
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Union
+
+import numpy as np
+import pandas as pd
+
+from .vak_answer_catalog import score_learning_style_from_row
+
 
 def _mean_to_1_4_mot_we(mean_val: float) -> int:
-    """
-    NEW METHOD: Maps a continuous mean (1-4) into 4 discrete buckets.
-    This solves the issue of converting a 3-tier scoring manual into a 1-4 scale.
-    Because it uses the mean, it works perfectly whether a section has 9 questions 
-    or 17 questions, preventing "sum inflation".
-    """
+    """Map a section mean (1–4 Likert) to discrete 1–4 buckets."""
     if mean_val <= 2.0:
         return 1
-    elif mean_val <= 2.6:
+    if mean_val <= 2.6:
         return 2
-    elif mean_val <= 3.2:
+    if mean_val <= 3.2:
         return 3
-    else:
-        return 4
+    return 4
 
 
 def _mean_to_1_4_se(mean_val: float) -> int:
-    """Maps a 1-7 mean score to 1-4 scale (used for Self-Esteem)."""
+    """Map a 1–7 self-esteem mean to 1–4 scale."""
     if mean_val <= 2.5:
         return 1
-    elif mean_val <= 4.0:
+    if mean_val <= 4.0:
         return 2
-    elif mean_val <= 5.5:
+    if mean_val <= 5.5:
         return 3
-    else:
-        return 4
+    return 4
 
 
-def _learning_style(row: pd.Series) -> str:
-    """Counts A/B/C answers and returns the majority learning style."""
-    vals = row.values
-    visual      = np.sum(vals == 'A')
-    auditory    = np.sum(vals == 'B')
-    kinesthetic = np.sum(vals == 'C')
-    counts = {'Visual': visual, 'Auditory': auditory, 'Kinesthetic': kinesthetic}
-    return max(counts, key=counts.get)
+def _header_text(columns: list) -> list[str]:
+    return [str(c).strip() for c in columns]
 
 
-# --- Main processor ----------------------------------------------------------
+def _find_column_index(headers: list[str], keyword: str) -> int:
+    key = keyword.lower()
+    for i, h in enumerate(headers):
+        if key in h.lower():
+            return i
+    return -1
 
-def process_google_form(input_source, output_path: str = None) -> pd.DataFrame:
+
+def is_raw_google_form(df: pd.DataFrame) -> bool:
+    """True when headers look like an unmodified Google Form export."""
+    headers = _header_text(df.columns.tolist())
+    has_name = any("first and last name" in h.lower() for h in headers)
+    has_wand = any("magic wand" in h.lower() for h in headers)
+    return has_name and has_wand
+
+
+def _load_raw_df(input_source: Union[str, Path, pd.DataFrame]) -> pd.DataFrame:
+    if isinstance(input_source, pd.DataFrame):
+        return input_source.copy()
+    return pd.read_csv(input_source, dtype=str)
+
+
+def _section_slice(df: pd.DataFrame, start: int, end: int) -> pd.DataFrame:
+    if start < 0 or end <= start:
+        return df.iloc[:, 0:0]
+    return df.iloc[:, start:end]
+
+
+def process_google_form(
+    input_source: Union[str, Path, pd.DataFrame],
+    output_path: str | None = None,
+) -> pd.DataFrame:
     """
-    Reads a raw Google Form CSV export and converts it to GroupGen format.
-    Dynamically finds column ranges based on text markers.
+    Read a raw Google Form CSV and return the seven clustering columns.
+
+    Accepts a file path, file-like object, or an already-loaded DataFrame.
     """
-    # -- Load ----------------------------------------------------------------
-    df = pd.read_csv(input_source, dtype=str)
-    headers = df.columns.tolist()
+    df = _load_raw_df(input_source)
+    headers = _header_text(df.columns.tolist())
 
-    # --- DYNAMIC INDEX FINDING ---
-    def find_index(keyword, exact=False):
-        """Helper to find column index by searching header text."""
-        for i, h in enumerate(headers):
-            if exact:
-                if keyword.lower() == h.lower().strip(): return i
-            else:
-                if keyword.lower() in h.lower(): return i
-        return -1
-
-    # Find the "Magic Wand" dividers
     wand_indices = [i for i, h in enumerate(headers) if "magic wand" in h.lower()]
-    
-    # Identify Core Demographic Columns
-    name_idx = find_index("first and last name")
-    if name_idx == -1: name_idx = 1 # Fallback to standard col 1
-    
-    email_idx = find_index("email")
-    gender_idx = find_index("gender identity")
-    diversity_idx = find_index("ethnicity")
+    if len(wand_indices) < 4:
+        raise ValueError(
+            f"Expected 4 magic-wand divider columns; found {len(wand_indices)}. "
+            "See STUDY_SETUP.md for the required Google Form layout."
+        )
 
-    # -------------------------------------------------------------------------
-    # Identify Trait Sections (Immune to inserted/deleted columns)
-    # -------------------------------------------------------------------------
-    
-    # 1. Learning Style (Starts after Email, ends at the first Magic Wand)
-    ls_start = email_idx + 1 if email_idx != -1 else 3
-    ls_end = wand_indices[0] if len(wand_indices) > 0 else 31
+    name_idx = _find_column_index(headers, "first and last name")
+    if name_idx == -1:
+        raise ValueError('Could not find a "first and last name" column in the export.')
 
-    # 2. Self-Esteem (Starts after first Magic Wand)
-    se_start = wand_indices[0] + 1
-    # Ends at the start of the Motivation section
-    se_end = find_index("not the type to do well in computer programming")
-    
-    # 3. Motivation (Starts at 'not the type', ends at the NEXT Magic Wand)
-    mot_start = se_end
-    # Find the wand that comes immediately after Motivation
-    mot_end = next((i for i in wand_indices if i > mot_start), mot_start + 17)
-    
-    # 4. Work Ethic (Starts at 'arrive at classes')
-    # Note: Skipped the extra questions (59-65) to strictly grab Work Ethic
-    we_start = find_index("arrive at classes and other meetings on time")
-    # Find the wand that comes immediately after Work Ethic
-    we_end = next((i for i in wand_indices if i > we_start), we_start + 9)
+    email_idx = _find_column_index(headers, "email")
+    gender_idx = _find_column_index(headers, "gender identity")
+    diversity_idx = _find_column_index(headers, "ethnicity")
 
+    meta_end = name_idx
+    if email_idx != -1:
+        meta_end = max(meta_end, email_idx)
+    ls_start = meta_end + 1
+    ls_end = wand_indices[0]
+    se_start, se_end = wand_indices[0] + 1, wand_indices[1]
+    mot_start, mot_end = wand_indices[1] + 1, wand_indices[2]
+    we_start, we_end = wand_indices[2] + 1, wand_indices[3]
 
-    # -- Clean Data ----------------------------------------------------------
-    # Drop rows where name is empty
-    valid_rows_mask = df.iloc[:, name_idx].fillna("").astype(str).str.strip() != ""
+    valid_rows_mask = (
+        df.iloc[:, name_idx].fillna("").astype(str).str.strip() != ""
+    )
     df = df[valid_rows_mask].copy()
 
-    n = len(df)
-    source_name = input_source if isinstance(input_source, str) else "uploaded file"
-    print(f"Loaded {n} student responses from: {source_name}")
-
     out = pd.DataFrame()
-    out['Name'] = df.iloc[:, name_idx].fillna("Unknown").astype(str).str.strip()
+    out["Name"] = df.iloc[:, name_idx].fillna("Unknown").astype(str).str.strip()
 
-    # -- Learning Style ------------------------------------------------------
-    ls_cols = df.iloc[:, ls_start:ls_end].copy()
-    
-    def _extract_abc(val):
-        if pd.isna(val): return "UNKNOWN"
-        val_clean = str(val).strip().upper()
-        if val_clean.startswith("A"): return "A"
-        if val_clean.startswith("B"): return "B"
-        if val_clean.startswith("C"): return "C"
-        return "UNKNOWN"
+    ls_cols = _section_slice(df, ls_start, ls_end)
+    out["Learning_Style"] = ls_cols.apply(
+        lambda row: score_learning_style_from_row(row.tolist()), axis=1
+    )
 
-    ls_cols = ls_cols.applymap(_extract_abc)
-    out['Learning_Style'] = ls_cols.apply(_learning_style, axis=1)
+    se_cols = _section_slice(df, se_start, se_end).apply(
+        pd.to_numeric, errors="coerce"
+    )
+    out["Self_Esteem"] = se_cols.mean(axis=1).apply(_mean_to_1_4_se)
 
-    # -- Self-Esteem (1-7 mean -> 1-4) ---------------------------------------
-    se_cols = df.iloc[:, se_start:se_end].apply(pd.to_numeric, errors='coerce').fillna(0).astype(float)
-    out['Self_Esteem'] = se_cols.mean(axis=1).round(2).apply(_mean_to_1_4_se)
+    mot_cols = _section_slice(df, mot_start, mot_end).apply(
+        pd.to_numeric, errors="coerce"
+    )
+    out["Motivation"] = mot_cols.mean(axis=1).apply(_mean_to_1_4_mot_we)
 
-    # -- Motivation (Mean -> 1-4 scale) --------------------------------------
-    mot_cols = df.iloc[:, mot_start:mot_end].apply(pd.to_numeric, errors='coerce').fillna(0).astype(float)
-    out['Motivation'] = mot_cols.mean(axis=1).round(2).apply(_mean_to_1_4_mot_we)
+    we_cols = _section_slice(df, we_start, we_end).apply(
+        pd.to_numeric, errors="coerce"
+    )
+    out["Work_Ethic"] = we_cols.mean(axis=1).apply(_mean_to_1_4_mot_we)
 
-    # -- Work Ethic (Mean -> 1-4 scale) --------------------------------------
-    we_cols = df.iloc[:, we_start:we_end].apply(pd.to_numeric, errors='coerce').fillna(0).astype(float)
-    out['Work_Ethic'] = we_cols.mean(axis=1).round(2).apply(_mean_to_1_4_mot_we)
+    out["Gender"] = (
+        df.iloc[:, gender_idx].astype(str).str.strip()
+        if gender_idx != -1
+        else "Unknown"
+    )
+    out["Diversity"] = (
+        df.iloc[:, diversity_idx].astype(str).str.strip()
+        if diversity_idx != -1
+        else "Unknown"
+    )
 
-    # -- Demographics --------------------------------------------------------
-    out['Gender'] = df.iloc[:, gender_idx].str.strip() if gender_idx != -1 else "Unknown"
-    out['Diversity'] = df.iloc[:, diversity_idx].str.strip() if diversity_idx != -1 else "Unknown"
-
-    # -- Reorder columns (Original Format) -----------------------------------
-    out = out[[
-        'Name', 'Gender', 'Diversity', 'Learning_Style',
-        'Motivation', 'Self_Esteem', 'Work_Ethic'
-    ]]
-
-    # -- Save ----------------------------------------------------------------
-    if output_path is None and isinstance(input_source, str):
-        base_dir = os.path.dirname(os.path.abspath(input_source))
-        output_path = os.path.join(base_dir, 'groupgen_output.csv')
+    out = out[
+        [
+            "Name",
+            "Gender",
+            "Motivation",
+            "Self_Esteem",
+            "Work_Ethic",
+            "Learning_Style",
+            "Diversity",
+        ]
+    ]
 
     if output_path:
         out.to_csv(output_path, index=False)
-        print(f"GroupGen CSV saved to: {output_path}")
 
     return out
+
+
+def merge_groups_into_raw_export(
+    raw_df: pd.DataFrame, grouped_df: pd.DataFrame
+) -> pd.DataFrame:
+    """Attach ``Group_ID`` from scored roster back onto the original Form export."""
+    merged = raw_df.copy()
+    headers = _header_text(merged.columns.tolist())
+    name_idx = _find_column_index(headers, "first and last name")
+    if name_idx == -1:
+        raise ValueError('Raw export is missing a "first and last name" column.')
+
+    raw_names = merged.iloc[:, name_idx].astype(str).str.strip()
+    group_map = (
+        grouped_df[["Name", "Group_ID"]]
+        .assign(Name=lambda d: d["Name"].astype(str).str.strip())
+        .drop_duplicates(subset=["Name"], keep="first")
+        .set_index("Name")["Group_ID"]
+    )
+    merged["Group_ID"] = raw_names.map(group_map)
+    if merged["Group_ID"].isna().any():
+        missing = raw_names[merged["Group_ID"].isna()].tolist()[:5]
+        raise ValueError(
+            "Could not assign Group_ID for every student in the raw export. "
+            f"Unmatched names (sample): {missing}"
+        )
+    return merged

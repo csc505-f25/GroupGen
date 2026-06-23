@@ -1,197 +1,200 @@
-
 """
-Clustering Module
+Feature engineering, distance matrices, and post-clustering adjustments.
 
-This module implements clustering algorithms to group students.
-You need to implement:
-1. Feature-based similarity/distance computation
-2. K-Medoids or similar clustering algorithm
-3. Gender and diversity locking mechanism to prevent isolation
+Production path (via ``pipeline.run_grouping_pipeline``):
+  - ``compute_feature_vector`` — Motivation, Self_Esteem, Work_Ethic, Learning_Style only
+  - ``compute_psychometric_distance_matrix`` — Manhattan for clustering and swaps
+  - ``enforce_group_size`` — balance counts after K-Medoids
+  - ``rebalance_demographic_column`` — spread gender/diversity into pairs across groups
+  - ``check_*_isolation`` — residual lone-category warnings
+
+Research / legacy (not used for live classroom grouping):
+  - ``compute_distance_matrix`` — also builds optional Gower matrix (includes demographics)
+  - ``kmeans_custom``, ``form_balanced_groups``, ``visualize_*`` — evaluation and plots
+
+See ``docs/ARCHITECTURE.md`` for the full lifecycle.
 """
+
+import logging
+import warnings
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import gower
 from typing import List, Dict, Tuple, Optional
+
+logger = logging.getLogger(__name__)
+
+VALID_LEARNING_STYLES = ["Visual", "Auditory", "Kinesthetic"]
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.metrics import pairwise_distances
 from sklearn.decomposition import PCA
-from kmedoids import kmedoids_pam
+from .kmedoids import kmedoids_pam
 
 # ==========================================
 # 1. Feature Engineering & Distances
 # ==========================================
 
 def enforce_group_size(
-    labels: np.ndarray, 
-    group_size: int, 
+    labels: np.ndarray,
+    group_size: int,
+    *,
+    distance_matrix: np.ndarray = None,
     feature_matrix: np.ndarray = None,
-    metric: str = 'manhattan',
-    expected_n_clusters: int = None # <--- NEW: Explicitly pass expected number of groups
-):
+    metric: str = "manhattan",
+) -> np.ndarray:
     """
-    Redistributes students to enforce target group size.
-    Places remainder students into the group they are closest to
-    using the specified distance metric (default: manhattan).
+    Redistribute students so each group matches the ceil(n/k) size distribution.
+
+    Target counts: ``base = n // k`` and ``base + 1`` for the remainder groups.
+    Production passes the psychometric ``distance_matrix``; evaluation may use
+    ``feature_matrix`` centroid distance instead.
+
+    Raises ``ValueError`` if balancing cannot complete within ``2 * n`` moves.
     """
     if len(labels) == 0:
         return labels
 
     n_students = len(labels)
-    unique_groups_observed = np.unique(labels)
-    
-    # DETERMINE TOTAL GROUPS
-    if expected_n_clusters is not None:
-        n_groups = expected_n_clusters
-        # Ensure we consider ALL groups 0..n_groups-1, even if empty
-        all_groups = np.arange(n_groups)
-    else:
-        n_groups = len(unique_groups_observed)
-        all_groups = unique_groups_observed
-    
-    # Copy labels to avoid modifying original array
+    unique_groups = np.unique(labels)
+    n_groups = len(unique_groups)
     new_labels = labels.copy()
 
-    # 1. Determine Target Sizes (Balanced)
-    # We distribute the remainder to the first k groups
+    # Example: 31 students, 7 groups → base=4, remainder=3 → three groups of 5, four of 4.
     base_size = n_students // n_groups
     remainder = n_students % n_groups
-    
-    # Calculate current counts (initialize 0 for all expected groups)
-    current_counts = {g: 0 for g in all_groups}
-    for g in new_labels:
-        if g in current_counts:
-            current_counts[g] += 1
-    
-    # Assign target capacities
-    # Optimization: Assign larger targets to currently larger groups to minimize moves
-    sorted_groups_by_curr_size = sorted(all_groups, key=lambda g: current_counts[g], reverse=True)
-    target_sizes = {}
-    for i, g_id in enumerate(sorted_groups_by_curr_size):
-        target_sizes[g_id] = base_size + (1 if i < remainder else 0)
+    current_counts = {g: int(np.sum(new_labels == g)) for g in unique_groups}
 
-    # 2. Redistribution Loop
-    max_iter = n_students * 2  # Safety limit
-    
-    for _ in range(max_iter):
-        # Identify Donors (Have too many) and Receivers (Have too few)
-        donors = [g for g in all_groups if current_counts[g] > target_sizes[g]]
-        receivers = [g for g in all_groups if current_counts[g] < target_sizes[g]]
-        
+    # Give the extra +1 seats to the groups that are currently largest (deterministic).
+    sorted_groups_by_curr_size = sorted(
+        unique_groups, key=lambda g: current_counts[g], reverse=True
+    )
+    target_sizes = {
+        g_id: base_size + (1 if i < remainder else 0)
+        for i, g_id in enumerate(sorted_groups_by_curr_size)
+    }
+
+    max_iter = n_students * 2  # hard stop — cannot infinite-loop
+
+    for iteration in range(max_iter):
+        donors = [g for g in unique_groups if current_counts[g] > target_sizes[g]]
+        receivers = [g for g in unique_groups if current_counts[g] < target_sizes[g]]
+
         if not donors or not receivers:
-            break # Perfectly balanced
-            
+            break
+
         best_move = None
-        min_cost = float('inf')
-        
-        # If we have features, use distance. Else simplistic move.
-        if feature_matrix is not None:
-             # Precompute receiver centers to save time
-            receiver_centers = {}
-            for r_id in receivers:
-                mask = (new_labels == r_id)
-                if np.any(mask):
-                    receiver_centers[r_id] = feature_matrix[mask].mean(axis=0)
-                else:
-                    # If empty, center is 0 (should rarely happen in this flow)
-                    receiver_centers[r_id] = np.zeros(feature_matrix.shape[1])
-            
-            # Find the globally best single move from ANY donor to ANY receiver
+        min_cost = float("inf")
+
+        if distance_matrix is not None:
+            # Production: pick the donor→receiver move with smallest Manhattan edge.
+            for d_id in donors:
+                for student_idx in np.where(new_labels == d_id)[0]:
+                    for r_id in receivers:
+                        receiver_mask = new_labels == r_id
+                        if not np.any(receiver_mask):
+                            continue
+                        receiver_indices = np.where(receiver_mask)[0]
+                        cost = float(np.min(distance_matrix[student_idx, receiver_indices]))
+                        if np.isfinite(cost) and cost < min_cost:
+                            min_cost = cost
+                            best_move = (int(student_idx), r_id)
+        elif feature_matrix is not None:
             for d_id in donors:
                 donor_indices = np.where(new_labels == d_id)[0]
                 donor_features = feature_matrix[donor_indices]
-                
                 for r_id in receivers:
-                    center_r = receiver_centers[r_id].reshape(1, -1)
-                    
-                    # Calculate distances from all potential donors to this receiver center
-                    # We use the metric passed in (e.g., 'manhattan')
-                    dists = pairwise_distances(donor_features, center_r, metric=metric).flatten()
-                    
-                    # Find closest student
-                    local_min_idx = np.argmin(dists)
-                    local_min_dist = dists[local_min_idx]
-                    
+                    mask = new_labels == r_id
+                    if np.any(mask):
+                        center = feature_matrix[mask].mean(axis=0).reshape(1, -1)
+                    else:
+                        center = np.zeros((1, feature_matrix.shape[1]))
+                    dists = pairwise_distances(
+                        donor_features, center, metric=metric
+                    ).flatten()
+                    local_min_idx = int(np.argmin(dists))
+                    local_min_dist = float(dists[local_min_idx])
                     if local_min_dist < min_cost:
                         min_cost = local_min_dist
-                        best_move = (donor_indices[local_min_idx], r_id)
-        
+                        best_move = (int(donor_indices[local_min_idx]), r_id)
         else:
-            # Fallback (No features): Just move first available student
-            d_id = donors[0]
-            r_id = receivers[0]
-            student_idx = np.where(new_labels == d_id)[0][0]
-            best_move = (student_idx, r_id)
-            
-        # Execute the move
-        if best_move:
-            student_to_move, new_group = best_move
-            old_group = new_labels[student_to_move]
-            
-            new_labels[student_to_move] = new_group
-            current_counts[old_group] -= 1
-            current_counts[new_group] += 1
-            
+            d_id, r_id = donors[0], receivers[0]
+            best_move = (int(np.where(new_labels == d_id)[0][0]), r_id)
+
+        if best_move is None:
+            raise ValueError(
+                "Could not balance group sizes: no valid student move found. "
+                "Try a different target group size or check your data."
+            )
+
+        student_to_move, new_group = best_move
+        old_group = new_labels[student_to_move]
+        new_labels[student_to_move] = new_group
+        current_counts[old_group] -= 1
+        current_counts[new_group] += 1
+
+    still_imbalanced = any(
+        current_counts[g] != target_sizes[g] for g in unique_groups
+    )
+    if still_imbalanced:
+        actual = {int(g): current_counts[g] for g in unique_groups}
+        expected = {int(g): target_sizes[g] for g in unique_groups}
+        raise ValueError(
+            f"Could not balance group sizes for target {group_size} "
+            f"after {max_iter} moves. Actual sizes: {actual}. Expected: {expected}."
+        )
+
     return new_labels
     
 
 def compute_feature_vector(df):
     """
-    Convert student features to numerical vectors for clustering.
-    
-    Features to include:
-    - Motivation (1-4)
-    - Self_Esteem (1-4)
-    - Work_Ethic (1-4)
-    - Learning_Style (encode as numeric, e.g., one-hot or label encoding)
-    
-    Args:
-        df: DataFrame with student data
-        
-    Returns:
-        NxM numpy array where N is number of students, M is number of features
+    Build the N×M matrix used for production clustering (psychometric only).
+
+    Columns used: Motivation, Self_Esteem, Work_Ethic (standardized) plus
+    one-hot Learning_Style. Gender and Diversity are intentionally excluded.
     """
-    # Extract numeric features
-    numeric_features = df[['Motivation', 'Self_Esteem', 'Work_Ethic']].values
-    
-    # Encode Learning_Style using OneHotEncoder
-    one_hot_encoder = OneHotEncoder(sparse_output=False)
-    learning_style_encoded = one_hot_encoder.fit_transform(df[['Learning_Style']])
-    
-    # Combine features
-    features = np.hstack([numeric_features, learning_style_encoded])
-    
-    # Normalize features using StandardScaler for better clustering
-    scaler = StandardScaler()
-    features = scaler.fit_transform(features)
-    
-    return features
+    # Scale 1–4 columns so no single trait dominates L1 distance.
+    numeric_scaled = StandardScaler().fit_transform(
+        df[["Motivation", "Self_Esteem", "Work_Ethic"]].values
+    )
+    # Fixed category order → stable columns across runs.
+    style_encoder = OneHotEncoder(
+        categories=[VALID_LEARNING_STYLES],
+        sparse_output=False,
+    )
+    learning_style_encoded = style_encoder.fit_transform(df[["Learning_Style"]])
+    return np.hstack([numeric_scaled, learning_style_encoded])
+
+
+def compute_psychometric_distance_matrix(feature_matrix: np.ndarray) -> np.ndarray:
+    """Manhattan distances from psychometric features only (production clustering)."""
+    return pairwise_distances(feature_matrix, metric="manhattan")
 
 
 def compute_distance_matrix(df, feature_matrix):
     """
-    Compute pairwise distance matrix between students.
-    
-    Args:
-        feature_matrix: NxM array of features
-        
-    Returns:
-        NxN distance matrix (Euclidean distance)
-    """
-    # Compute pairwise distances
-    eucdistance_matrix = pairwise_distances(feature_matrix, metric='euclidean')
-    mandistance_matrix = pairwise_distances(feature_matrix, metric='manhattan')
+    Distance matrices for clustering and research evaluation.
 
-    # Identify the columns needed for Gower
+    Production pipeline uses ``compute_psychometric_distance_matrix`` only.
+    Gower (includes Gender/Diversity) is for evaluation scripts, not live grouping.
+    """
+    eucdistance_matrix = pairwise_distances(feature_matrix, metric="euclidean")
+    mandistance_matrix = compute_psychometric_distance_matrix(feature_matrix)
+
+    # --- Research only: Gower mixes demographics into distance (NOT used in pipeline.py) ---
     gower_cols = ['Motivation', 'Self_Esteem', 'Work_Ethic', 'Gender', 'Diversity', 'Learning_Style']
     gower_data = df[gower_cols].copy()
 
     #Which columns are categorical
     categorical_cols = [gower_data[col].dtype == 'object' for col in gower_cols]
 
-    # Compute Gower distance matrix
-    gower_distance_matrix = gower.gower_matrix(gower_data, cat_features=categorical_cols)
+    # Gower is only needed for evaluation tournaments (optional dependency)
+    try:
+        import gower as gower_lib
+        gower_distance_matrix = gower_lib.gower_matrix(gower_data, cat_features=categorical_cols)
+    except ImportError:
+        gower_distance_matrix = None
 
     return eucdistance_matrix, mandistance_matrix, gower_distance_matrix
 
@@ -306,15 +309,30 @@ def compare_metrics_and_visualize(
         print(f"\n=== Running clustering with metric: {metric} (Calculated K={n_clusters}) ===")
 
         if metric == "manhattan" and use_kmedoids:
-            labels, medoid_indices = kmedoids_pam(feature_matrix, n_clusters, distance_metric=metric, random_state=random_state)
-            print(f"Using K-Medoids")
+            # K-Medoids expects an N×N distance matrix, not a feature matrix.
+            dist = compute_psychometric_distance_matrix(feature_matrix)
+            labels, medoid_indices = kmedoids_pam(
+                dist, n_clusters, random_state=random_state
+            )
+            centroids = feature_matrix[medoid_indices]
+            print(f"Using K-Medoids (medoid indices: {medoid_indices})")
         else:
-            labels, centroids = kmeans_custom(feature_matrix, n_clusters, random_state=random_state, return_centroids=True, metric=metric)
-            print(f"Using K-Means")
+            labels, centroids = kmeans_custom(
+                feature_matrix, n_clusters, random_state=random_state,
+                return_centroids=True, metric=metric
+            )
+            print("Using K-Means")
 
-        # Automatically enforce size as a secondary step
-        labels = enforce_group_size(labels, desired_group_size, feature_matrix=feature_matrix, expected_n_clusters=n_clusters)
-        
+        if desired_group_size is not None:
+            if metric == "manhattan" and use_kmedoids:
+                labels = enforce_group_size(
+                    labels, desired_group_size, distance_matrix=dist
+                )
+            else:
+                labels = enforce_group_size(
+                    labels, desired_group_size, feature_matrix=feature_matrix, metric=metric
+                )
+            print(f"Groups forcibly balanced to {desired_group_size} students each.")
         visualize_clustering(feature_matrix, labels, n_clusters, df=df, metric=metric)
 
 
@@ -546,184 +564,208 @@ def visualize_clustering_with_centroids(
     plt.show()
 
 
-def check_gender_isolation(pd, labels):
+# =============================================================================
+# Fairness post-processing — only ``labels`` change; ``df`` profile data is read-only
+# Swaps are 1-for-1 between two groups, so Step 6 group sizes stay the same.
+# =============================================================================
+
+from .fairness_distribution import (
+    MIN_GROUP_SIZE_DIVERSITY as _MIN_GROUP_SIZE_DIVERSITY,
+    MIN_GROUP_SIZE_GENDER as _MIN_GROUP_SIZE_GENDER,
+    category_target_counts,
+    has_fairness_donor as _has_fairness_donor,
+    rebalance_demographic_column,
+)
+
+
+def _gender_isolation_in_group(
+    df: pd.DataFrame, labels: np.ndarray, group_id: int
+) -> Optional[str]:
+    """First gender category with exactly one member in this group, or None."""
+    group_mask = labels == group_id
+    if int(group_mask.sum()) < _MIN_GROUP_SIZE_GENDER:
+        return None
+    counts = df.loc[group_mask, "Gender"].value_counts()
+    for gender_value, count in counts.items():
+        if count == 1:
+            return str(gender_value)
+    return None
+
+
+def _diversity_isolation_in_group(
+    df: pd.DataFrame, labels: np.ndarray, group_id: int
+) -> Optional[str]:
+    """First diversity category with exactly one member in this group, or None."""
+    group_mask = labels == group_id
+    if int(group_mask.sum()) < _MIN_GROUP_SIZE_DIVERSITY:
+        return None
+    counts = df.loc[group_mask, "Diversity"].value_counts()
+    for category, count in counts.items():
+        if count == 1:
+            return str(category)
+    return None
+
+
+def _find_best_fairness_swap(
+    df: pd.DataFrame,
+    labels: np.ndarray,
+    distance_matrix: np.ndarray,
+    group_id: int,
+    target_value: str,
+    column: str,
+) -> Optional[tuple[int, int, int]]:
     """
-    Check if any group has gender isolation (e.g., all men and one woman).
-    
-    Args:
-        pd: DataFrame with student data (must have 'Gender' column)
-        labels: Cluster labels for each student
-        
-    Returns:
-        Dictionary mapping group_id to isolation_type
-        Example: {2: 'female_isolated'} means group 2 has one female isolated
+    Pick a 1-for-1 swap: bring ``target_value`` into ``group_id`` from a donor group.
+
+    Prefers donors with 3+ of ``target_value`` so the donor does not become newly
+    isolated after the swap; falls back to donors with exactly 2.
     """
-    isolation_dict = {}
     unique_labels = np.unique(labels)
+    current_indices = np.where(labels == group_id)[0]
+    candidates_out = [
+        i for i in current_indices if str(df.iloc[i][column]) != target_value
+    ]
+    if not candidates_out:
+        return None
 
-    for label in unique_labels:
-        #get only students in this specific cluster
-        group_mask = (labels == label)
-        group_size = group_mask.sum()
+    # Tier 1: donor still has 2+ of target after giving one away; tier 2: donor had 2.
+    for min_donor_count in (3, 2):
+        best_swap: Optional[tuple[int, int, int]] = None
+        min_cost = float("inf")
 
-        #if group too small, skip
-        if group_size < 4:
-            continue
-        
-        #fetch the data for this group
-        group_genders = pd.loc[group_mask, 'Gender']
-        #Count number of males and females
-        n_males = (group_genders == 'Male').sum()
-        n_females = (group_genders == 'Female').sum()
-        
-        #isolation logic
-        if n_females == 1 and n_males > 1:
-            isolation_dict[int(label)] = 'female_isolated'
-            
-        # Condition B: Male Isolated (1 Male, > 1 Females)
-        elif n_males == 1 and n_females > 1:
-            isolation_dict[int(label)] = 'male_isolated'
-            
+        for donor_id in unique_labels:
+            if donor_id == group_id:
+                continue
+
+            donor_indices = np.where(labels == donor_id)[0]
+            donor_values = df.iloc[donor_indices][column]
+            if int((donor_values == target_value).sum()) < min_donor_count:
+                continue
+
+            candidates_in = [
+                i for i in donor_indices if str(df.iloc[i][column]) == target_value
+            ]
+            for c_in in candidates_in:
+                for c_out in candidates_out:
+                    dist = float(distance_matrix[c_in, c_out])
+                    if dist < min_cost:
+                        min_cost = dist
+                        best_swap = (c_in, c_out, int(donor_id))
+
+        if best_swap is not None:
+            return best_swap
+
+    return None
+
+
+def check_gender_isolation(df: pd.DataFrame, labels: np.ndarray) -> Dict[int, str]:
+    """
+    Flag groups where a student is the only member of their gender (any label).
+
+    Applies to all Gender values (Male, Female, Non-binary, etc.), not only M/F.
+    Groups with fewer than 4 students are skipped (same threshold as before).
+    """
+    isolation_dict: Dict[int, str] = {}
+    for label in np.unique(labels):
+        isolated = _gender_isolation_in_group(df, labels, int(label))
+        if isolated is not None:
+            isolation_dict[int(label)] = isolated
     return isolation_dict
+
 
 def fix_gender_isolation(
     df: pd.DataFrame,
     labels: np.ndarray,
     distance_matrix: np.ndarray,
-    isolated_groups: Dict[int, str]
-) -> np.ndarray:
+    isolated_groups: Dict[int, str],
+    *,
+    verbose: bool = False,
+) -> tuple[np.ndarray, bool]:
     """
-    Fix gender isolation by swapping students to ensuring no one is the 'only one' 
-    of their gender in a group > 3.
+    Fix gender isolation for any gender category (same swap pattern as diversity).
+
+    Returns updated labels and whether any swap was applied.
     """
-    labels = labels.copy() # Work on a copy to avoid accidental side effects
-    
-    for group_id, isolation_type in isolated_groups.items():
-        
-        # --- CRITICAL FIX 1: Re-verify the group is STILL isolated ---
-        # (If we combined two isolated students earlier in this loop, 
-        # this group might have already been fixed!)
-        current_group_indices = np.where(labels == group_id)[0]
-        current_genders = df.iloc[current_group_indices]['Gender']
-        
-        target_gender = 'Female' if isolation_type == 'female_isolated' else 'Male'
-        swap_out_gender = 'Male' if isolation_type == 'female_isolated' else 'Female'
-        
-        if (current_genders == target_gender).sum() != 1:
-            continue # Already fixed by a previous swap, skip!
+    labels = labels.copy()
+    changed = False
 
-        candidates_to_swap_out = [
-            idx for idx in current_group_indices 
-            if df.iloc[idx]['Gender'] == swap_out_gender
-        ]
-        
-        if not candidates_to_swap_out: continue 
+    for group_id in sorted(isolated_groups):
+        while True:
+            target_gender = _gender_isolation_in_group(df, labels, group_id)
+            if target_gender is None:
+                break
+            best_swap = _find_best_fairness_swap(
+                df, labels, distance_matrix, group_id, target_gender, "Gender"
+            )
+            if best_swap is None:
+                break
+            s_in, s_out, d_id = best_swap
+            labels[s_in] = group_id
+            labels[s_out] = d_id
+            changed = True
+            if verbose:
+                print(
+                    f"Fixed gender ({target_gender}) in G{group_id}: "
+                    f"Swapped {s_in} with {s_out}"
+                )
 
-        best_swap = None
-        min_cost = float('inf')
-        unique_labels = np.unique(labels)
-        
-        for donor_group_id in unique_labels:
-            if donor_group_id == group_id: continue 
-            
-            donor_indices = np.where(labels == donor_group_id)[0]
-            donor_genders = df.iloc[donor_indices]['Gender']
-            count_target = (donor_genders == target_gender).sum()
-            
-            # --- CRITICAL FIX 2: The "Combining" Rule ---
-            # Safe if they have > 2 (leaves them with 2+)
-            # OR Safe if they have exactly 1 (leaves them with 0, fixing isolation there too!)
-            if count_target > 2 or count_target == 1: 
-                
-                candidates_to_bring_in = [
-                    idx for idx in donor_indices 
-                    if df.iloc[idx]['Gender'] == target_gender
-                ]
-                
-                for candidate_in in candidates_to_bring_in:
-                    for candidate_out in candidates_to_swap_out:
-                        dist = distance_matrix[candidate_in, candidate_out]
-                        if dist < min_cost:
-                            min_cost = dist
-                            best_swap = (candidate_in, candidate_out, donor_group_id)
-
-        if best_swap:
-            student_in, student_out, donor_id = best_swap
-            labels[student_in] = group_id   
-            labels[student_out] = donor_id  
-            print(f"Fixed {isolation_type} in Group {group_id}: Swapped {student_in} (from G{donor_id}) with {student_out}")
-            
-    return labels
+    return labels, changed
 
 
 def check_diversity_isolation(df: pd.DataFrame, labels: np.ndarray) -> Dict[int, str]:
     """
     Check if any group has diversity isolation (e.g., 1 Black student in a group of 4).
     """
-    isolation_dict = {}
-    unique_labels = np.unique(labels)
-    
-    for label in unique_labels:
-        group_mask = (labels == label)
-        if group_mask.sum() < 3: continue
-            
-        group_diversity = df.loc[group_mask, 'Diversity']
-        counts = group_diversity.value_counts()
-        
-        # If a category appears exactly ONCE, flag it
-        for category, count in counts.items():
-            if count == 1:
-                isolation_dict[int(label)] = category
-                break # Handle one isolation per group at a time
-                
+    isolation_dict: Dict[int, str] = {}
+    for label in np.unique(labels):
+        isolated = _diversity_isolation_in_group(df, labels, int(label))
+        if isolated is not None:
+            isolation_dict[int(label)] = isolated
     return isolation_dict
 
 
-def fix_diversity_isolation(df: pd.DataFrame, labels: np.ndarray, distance_matrix: np.ndarray, isolated_groups: Dict[int, str]) -> np.ndarray:
+def fix_diversity_isolation(
+    df: pd.DataFrame,
+    labels: np.ndarray,
+    distance_matrix: np.ndarray,
+    isolated_groups: Dict[int, str],
+    *,
+    verbose: bool = False,
+) -> tuple[np.ndarray, bool]:
     """
     Fix diversity isolation by finding a donor group with EXTRA students of that category.
+
+    Returns updated labels and whether any swap was applied.
     """
     labels = labels.copy()
-    unique_labels = np.unique(labels)
-    
-    for group_id, target_category in isolated_groups.items():
-        
-        current_indices = np.where(labels == group_id)[0]
-        # We need to swap OUT someone who is NOT the target category
-        candidates_out = [i for i in current_indices if df.iloc[i]['Diversity'] != target_category]
-        
-        if not candidates_out: continue
-            
-        best_swap = None
-        min_cost = float('inf')
-        
-        for donor_id in unique_labels:
-            if donor_id == group_id: continue
-            
-            donor_indices = np.where(labels == donor_id)[0]
-            donor_diversity = df.iloc[donor_indices]['Diversity']
-            
-            # Donor must have >1 of this category. 
-            # (If they have 2, and we take 1, they have 1 left. This is a trade-off. 
-            # ideally >2, but for diversity categories, >1 is often the best we can find).
-            if (donor_diversity == target_category).sum() > 1:
-                
-                candidates_in = [i for i in donor_indices if df.iloc[i]['Diversity'] == target_category]
-                
-                for c_in in candidates_in:
-                    for c_out in candidates_out:
-                        dist = distance_matrix[c_in, c_out]
-                        if dist < min_cost:
-                            min_cost = dist
-                            best_swap = (c_in, c_out, donor_id)
-        
-        if best_swap:
+    changed = False
+
+    for group_id in sorted(isolated_groups):
+        while True:
+            target_category = _diversity_isolation_in_group(df, labels, group_id)
+            if target_category is None:
+                break
+            best_swap = _find_best_fairness_swap(
+                df,
+                labels,
+                distance_matrix,
+                group_id,
+                target_category,
+                "Diversity",
+            )
+            if best_swap is None:
+                break
             s_in, s_out, d_id = best_swap
             labels[s_in] = group_id
             labels[s_out] = d_id
-            print(f"Fixed Diversity ({target_category}) in G{group_id}: Swapped {s_in} with {s_out}")
-            
-    return labels
+            changed = True
+            if verbose:
+                print(
+                    f"Fixed Diversity ({target_category}) in G{group_id}: "
+                    f"Swapped {s_in} with {s_out}"
+                )
+
+    return labels, changed
 
 def form_balanced_groups(
     df: pd.DataFrame,
@@ -734,12 +776,13 @@ def form_balanced_groups(
     visualize: bool = False
 ) -> Tuple[pd.DataFrame, Dict[int, List[str]]]:
     """
-    Main function to form balanced student groups with locking mechanisms.
-    """
-    # --- DYNAMIC K CALCULATION ---
-    n_students = len(df)
-    n_groups = max(1, n_students // desired_group_size) # The "Table Anchor" logic
+    LEGACY / RESEARCH ONLY — not used by CLI, API, or ``run_grouping_pipeline``.
 
+    Uses K-Means (Euclidean) and Euclidean swap costs. Use ``run_grouping_pipeline`` instead.
+    """
+    # --- Legacy path below: classroom study should use pipeline.py instead ---
+    n_students = len(df)
+    n_groups = max(1, n_students // desired_group_size)
     # Step 1: Compute feature vectors
     feature_matrix = compute_feature_vector(df)
     
@@ -756,26 +799,23 @@ def form_balanced_groups(
     labels = initial_clustering(feature_matrix, n_groups, random_state, visualize=visualize, df=df)
 
     labels = enforce_group_size(
-        labels, 
-        desired_group_size, 
-        feature_matrix=feature_matrix, 
-        expected_n_clusters=n_groups
+        labels,
+        desired_group_size,
+        feature_matrix=feature_matrix,
     )
     
-    # Step 4: Check and fix gender isolation
     if enforce_gender_balance:
-        isolated_groups = check_gender_isolation(df, labels)
-        if isolated_groups:
-            print(f"   > Found gender isolation in groups: {list(isolated_groups.keys())}. Fixing...")
-            # We pass 'euc_dist' here because the swap logic needs to know who is closest
-            labels = fix_gender_isolation(df, labels, euc_dist, isolated_groups)
-    
-    # Step 5: Check and fix diversity isolation
+        labels, _ = rebalance_demographic_column(
+            df, labels, euc_dist, "Gender", min_group_size=_MIN_GROUP_SIZE_GENDER
+        )
     if enforce_diversity_balance:
-        isolated_groups = check_diversity_isolation(df, labels)
-        if isolated_groups:
-            print(f"   > Found diversity isolation in groups: {list(isolated_groups.keys())}. Fixing...")
-            labels = fix_diversity_isolation(df, labels, euc_dist, isolated_groups)
+        labels, _ = rebalance_demographic_column(
+            df,
+            labels,
+            euc_dist,
+            "Diversity",
+            min_group_size=_MIN_GROUP_SIZE_DIVERSITY,
+        )
     
     # Step 6: Add Group column to dataframe (1-indexed)
     result_df = df.copy()

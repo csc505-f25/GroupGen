@@ -1,22 +1,28 @@
 """
-Full Clustering Evaluation Runner
+Research-only clustering comparison (not classroom grouping).
 
-Runs K-Means (Euclidean) and K-Medoids (Manhattan) clustering on your data,
-computes all quality metrics, generates comparison tables and visualizations.
+Compares K-Means and K-Medoids variants (Euclidean, Manhattan, optional Gower)
+on the template dataset. Uses ``prepare_for_grouping`` for ingest but does
+**not** call ``run_grouping_pipeline``.
 
-Usage (from repository root):
-    python -c "from backend.run_full_evaluation import run_full_evaluation; run_full_evaluation()"
+Outputs: ``backend/output_plots/runs/<timestamp>_<uuid>/`` (CSVs, PNGs).
 
-Or from backend folder:
-    python -c "from run_full_evaluation import run_full_evaluation; run_full_evaluation()"
+Usage:
+    python -m backend.run_full_evaluation
+
+For production grouping see ``generate_groups.py`` / ``api.py``.
+See ``docs/ARCHITECTURE.md``.
 """
+
+import uuid
+from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
-from pathlib import Path
-import gower as gower
 from sklearn.metrics import silhouette_score
-from .data_loader import load_student_data, preprocess_data
+from .paths import DEFAULT_EVAL_OUTPUT_DIR, DEFAULT_TEMPLATE_CSV
+from .data_loader import prepare_for_grouping
+from .group_config import calculate_n_groups
 from .clustering import (
     compute_feature_vector, kmeans_custom, visualize_clustering, enforce_group_size, compute_distance_matrix
 )
@@ -52,24 +58,23 @@ def run_full_evaluation(
     print("FULL CLUSTERING EVALUATION PIPELINE")
     print("="*80)
 
-    # Create output directory if needed
-    output_dir = Path(__file__).resolve().parent / "output_plots"
-    
+    # Per-run output so concurrent evaluations do not overwrite
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+    run_id = f"{stamp}_{uuid.uuid4().hex[:8]}"
+    output_dir = DEFAULT_EVAL_OUTPUT_DIR / run_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+    print(f"\n Evaluation outputs: {output_dir}")
 
-    # Load and preprocess data
+    # Same ingest path as production API/CLI
     print("\n Loading and preprocessing student data...")
-    data_file = Path(__file__).resolve().parent / "data" / "sample_students.csv"
-    df = load_student_data(str(data_file))
-    df = preprocess_data(df)
+    data_file = DEFAULT_TEMPLATE_CSV
+    df = prepare_for_grouping(str(data_file))
     n_students = len(df)
     print(f"  Loaded {len(df)} students")
 
     if n_clusters is None:
-        # Calculate number of clusters based on student count and target size
-        n_clusters = n_students // group_size
-        
-        # Safety check: If class is small, ensure at least 2 groups exist
-        if n_clusters < 2: 
+        n_clusters = calculate_n_groups(n_students, group_size)
+        if n_clusters < 2 and n_students >= 4:
             n_clusters = 2
 
     print("\n Computing feature vectors...")
@@ -94,10 +99,10 @@ def run_full_evaluation(
 
     #Enforce Group Size
     labels_kmeans_euc = enforce_group_size(
-        labels_kmeans_euc, 
+        labels_kmeans_euc,
         group_size,
         feature_matrix=feature_matrix,
-        metric="euclidean"
+        metric="euclidean",
     )
 
     #calculate skill variance for this clustering
@@ -176,10 +181,9 @@ def run_full_evaluation(
 
     #Enforce Group Size
     labels_kmedoids_man = enforce_group_size(
-        labels_kmedoids_man, 
+        labels_kmedoids_man,
         group_size,
-        feature_matrix=feature_matrix,
-        metric="manhattan"
+        distance_matrix=dist_manhattan,
     )
 
     # calculate skill variance for this clustering
@@ -212,50 +216,45 @@ def run_full_evaluation(
     #=================================#
     # 4. K-Medoids Gower
     #=================================#
-    #Cluster
-    print("\n K-Medoids (Gower Distance)...")
+    if dist_gower is None:
+        print("\n Skipping K-Medoids (Gower): install gower package (pip install gower)")
+    else:
+        print("\n K-Medoids (Gower Distance)...")
 
-    # 1. Run clustering using the Gower distance matrix
-    labels_kmedoids_gower, medoid_indices_gower = kmedoids_pam(
-        dist_gower, n_clusters, random_state=random_state
-    )
+        labels_kmedoids_gower, medoid_indices_gower = kmedoids_pam(
+            dist_gower, n_clusters, random_state=random_state
+        )
 
-    #Enforce group size
-    labels_kmedoids_gower = enforce_group_size(
-        labels_kmedoids_gower, 
-        group_size,
-        feature_matrix=feature_matrix,
-        metric="manhattan"
-    )
+        labels_kmedoids_gower = enforce_group_size(
+            labels_kmedoids_gower,
+            group_size,
+            distance_matrix=dist_gower,
+        )
 
-    # Calculate skill variance for this clustering
-    skill_var_gower = compute_skill_variance(df, labels_kmedoids_gower)
+        skill_var_gower = compute_skill_variance(df, labels_kmedoids_gower)
 
-    # Evaluate Clustering
-    result_kmedoids_gower = evaluate_clustering(
-        feature_matrix, 
-        labels_kmedoids_gower, 
-        df, metric_name="Gower", 
-        algorithm_name="K-Medoids"
-    )
+        result_kmedoids_gower = evaluate_clustering(
+            feature_matrix,
+            labels_kmedoids_gower,
+            df,
+            metric_name="Gower",
+            algorithm_name="K-Medoids",
+        )
 
-    # Override Silhouette Score using the Gower distance matrix
-    result_kmedoids_gower['silhouette_score'] = silhouette_score(
-        dist_gower, labels_kmedoids_gower, metric='precomputed'
-    )
+        result_kmedoids_gower["silhouette_score"] = silhouette_score(
+            dist_gower, labels_kmedoids_gower, metric="precomputed"
+        )
+        result_kmedoids_gower["skill_variance"] = skill_var_gower
 
-    # 4. Compute and report skill variance
-    result_kmedoids_gower['skill_variance'] = skill_var_gower
+        results.append(result_kmedoids_gower)
+        print(f"  Medoid indices: {medoid_indices_gower}")
+        print_evaluation_report(result_kmedoids_gower)
+        print_skill_variance_report(skill_var_gower, "K-Medoids", "Gower")
 
-    # 5. Add to results list and print
-    results.append(result_kmedoids_gower)
-    print(f"  Medoid indices: {medoid_indices_gower}")
-    print_evaluation_report(result_kmedoids_gower)
-    print_skill_variance_report(skill_var_gower, "K-Medoids", "Gower")
-
-    if visualize:
-        # Use the 'gower' metric name for visualization clarity
-        visualize_clustering(feature_matrix, labels_kmedoids_gower, n_clusters, df=df, metric="Gower")
+        if visualize:
+            visualize_clustering(
+                feature_matrix, labels_kmedoids_gower, n_clusters, df=df, metric="Gower"
+            )
 
 
 
@@ -325,5 +324,9 @@ def get_user_input():
 
 
 if __name__ == "__main__":
+    if __package__ is None:
+        raise SystemExit(
+            "Run from the repo root:  python -m backend.run_full_evaluation"
+        )
     target_group_size = get_user_input()
     run_full_evaluation(group_size=target_group_size)

@@ -95,8 +95,7 @@ def print_skill_variance_report(skill_var_result, algorithm, metric):
         print(f"  Motivation Variance:  {variances['motivation_variance']:.4f}")
         print(f"  Work_Ethic Variance:  {variances['work_ethic_variance']:.4f}")
         print(f"  Self_Esteem Variance: {variances['self_esteem_variance']:.4f}")
-        print(f"  ─────────────────────────────")
-    print(f"  Mean Skill Variance:  {variances['mean_skill_variance']:.4f} ← Group Homogeneity Score (lower = more similar)")
+        print(f"  Mean Skill Variance:  {variances['mean_skill_variance']:.4f} (lower = more similar)")
     print()
 
 
@@ -161,5 +160,9 @@ def plot_skill_variance(results, save_path=None):
     ax.legend(fontsize=9, loc='best')
 
     plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches="tight")
+        print(f"Skill variance plot saved to: {save_path}")
 
     plt.show()

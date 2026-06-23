@@ -13,6 +13,9 @@ env/
 *.db
 *.sqlite3
 *.csv
+# Keep study templates (teachers copy this layout)
+!backend/data/templates/
+!backend/data/templates/**
 
 # ---- IDE / Editor ----
 .vscode/
@@ -31,7 +34,20 @@ Thumbs.db
 
 # ---- FastAPI / Local Config ----
 .env
+# Ignore stray JSON dumps; keep frontend manifests
 *.json
+!frontend/package.json
+!frontend/package-lock.json
+!frontend/tsconfig.json
+
+# ---- Generated run outputs ----
+backend/output/
+backend/output_plots/
+
+# ---- Frontend build artifacts ----
+frontend/.next/
+frontend/out/
+frontend/node_modules/
 
 # ---- Temporary ----
 tmp/

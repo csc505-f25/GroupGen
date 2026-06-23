@@ -1,42 +1,76 @@
+/**
+ * GroupGen main UI — upload CSV, call POST /generate-groups, render group cards.
+ * API contract: see docs/ARCHITECTURE.md and ApiResponse type below.
+ */
 "use client";
 
 import { useState } from "react";
 import Image from "next/image";
 
-// 1. Define Types matching your API Response
 type Student = {
   Name: string;
-  [key: string]: any;
+  Gender?: string;
+  Motivation?: number;
+  Self_Esteem?: number;
+  Work_Ethic?: number;
+  Learning_Style?: string;
+  Diversity?: string;
 };
 
 type GroupStats = {
   size: number;
   avg_motivation: number;
+  avg_self_esteem?: number;
   avg_work_ethic: number;
+  gender_balance?: Record<string, number>;
   learning_styles: string[];
 };
 
 type Group = {
   id: number;
-  members: Student[]; // Your API returns full student objects here
+  members: Student[];
   stats: GroupStats;
 };
 
 type ApiResponse = {
-  status: string;
+  status: "success" | "success_with_warnings" | string;
   total_students: number;
   total_groups: number;
+  target_group_size: number;
+  configured_groups: number;
+  group_size_summary?: string;
+  warnings?: string[];
   groups: Group[];
 };
+
+function formatApiError(detail: unknown, fallback: string): string {
+  if (detail == null) return fallback;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (item && typeof item === "object" && "msg" in item) {
+          const loc = "loc" in item && Array.isArray(item.loc)
+            ? item.loc.join(".")
+            : "";
+          return loc ? `${loc}: ${item.msg}` : String(item.msg);
+        }
+        return JSON.stringify(item);
+      })
+      .join("\n");
+  }
+  return String(detail);
+}
 
 export default function Home() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [groups, setGroups] = useState<Group[] | null>(null);
+  const [resultSummary, setResultSummary] = useState<string | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [groupSize, setGroupSize] = useState(5);
 
-  // 2. Handle File Selection (No Parsing Needed)
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setError(null);
     if (e.target.files && e.target.files[0]) {
@@ -44,9 +78,10 @@ export default function Home() {
     }
   };
 
-  // 3. Send File to API
   const handleGenerate = async () => {
     setError(null);
+    setWarnings([]);
+    setResultSummary(null);
     if (!selectedFile) {
       setError("Please select a CSV file first!");
       return;
@@ -54,49 +89,70 @@ export default function Home() {
 
     setLoading(true);
 
-    // Create a FormData object to send the file as "multipart/form-data"
+    // Browser sends raw CSV; all parsing/validation happens on the Python API.
     const formData = new FormData();
     formData.append("file", selectedFile);
 
-    // We append the group_size as a query parameter in the URL below
-    // because your API defines it as a query param, not a body field.
-
     try {
-      // Use environment variable with a fallback to localhost:8000
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
       const url = `${apiUrl}/generate-groups?group_size=${groupSize}`;
 
       const response = await fetch(url, {
         method: "POST",
         body: formData,
-        // Note: Do NOT set Content-Type header manually when using FormData. 
-        // The browser sets it automatically with the boundary.
       });
 
       if (response.ok) {
         const result: ApiResponse = await response.json();
-        setGroups(result.groups); // Extract the 'groups' list from the response wrapper
+        if (!Array.isArray(result.groups)) {
+          setError("Server returned an unexpected response format.");
+          return;
+        }
+        setGroups(result.groups);
+        // Amber banner in UI when fairness swaps could not fix every isolation case.
+        setWarnings(result.warnings ?? []);
+        const sizeNote = result.group_size_summary
+          ? `Group sizes: ${result.group_size_summary}.`
+          : "";
+        setResultSummary(
+          `${result.total_students} students → ${result.total_groups} groups (target ${result.target_group_size} per group). ${sizeNote}`.trim()
+        );
       } else {
-        const errorData = await response.json();
-        setError(`Server Error: ${errorData.detail}`);
+        let errorData: { detail?: unknown } = {};
+        try {
+          errorData = await response.json();
+        } catch {
+          /* non-JSON body */
+        }
+        setError(
+          formatApiError(
+            errorData.detail,
+            `Request failed (${response.status} ${response.statusText})`
+          )
+        );
       }
-    } catch (error) {
-      console.error("API Connection Error:", error);
-      setError(`Could not connect to backend at ${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000"}`);
+    } catch (err) {
+      console.error("API Connection Error:", err);
+      setError(
+        `Could not connect to backend at ${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000"}`
+      );
     } finally {
       setLoading(false);
     }
   };
 
+  const clearResults = () => {
+    setGroups(null);
+    setResultSummary(null);
+    setWarnings([]);
+  };
+
   return (
     <div className="flex h-screen bg-slate-50 font-sans text-slate-800 print:h-auto print:overflow-visible">
 
-      {/* --- SIDEBAR --- */}
       <aside className="w-1/3 min-w-[320px] print:hidden bg-[#e4fdff] border-r border-indigo-100 p-8 flex flex-col shadow-sm z-10">
 
-        {/* Header with Logo */}
         <div className="mb-8 flex flex-col items-start">
-          {/* Replace "logo.png" with your actual filename */}
           <p className="text-medium text-slate-500 font-medium ml-1">AI-Powered Grouping</p>
           <Image
             src="/groupgen-high-resolution-logo.png"
@@ -109,7 +165,6 @@ export default function Home() {
         </div>
 
         <div className="flex-grow space-y-8">
-          {/* File Upload */}
           <div className="space-y-3">
             <h2 className="font-semibold text-slate-700 uppercase text-xs tracking-wider">1. Upload CSV</h2>
             <div className="border-2 border-dashed border-indigo-100 rounded-xl bg-indigo-50/50 p-6 flex flex-col items-center justify-center text-center hover:border-indigo-300 transition relative cursor-pointer">
@@ -128,20 +183,21 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Settings */}
           <div className="space-y-3">
             <h2 className="font-semibold text-slate-700 uppercase text-xs tracking-wider">2. Group Size</h2>
             <input
               type="number"
               min="2" max="50"
               value={groupSize}
-              onChange={(e) => setGroupSize(parseInt(e.target.value))}
+              onChange={(e) => {
+                const n = parseInt(e.target.value, 10);
+                if (!Number.isNaN(n)) setGroupSize(n);
+              }}
               className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
         </div>
 
-        {/* Action Button */}
         <div className="pt-6 border-t border-slate-100">
           <button
             onClick={handleGenerate}
@@ -155,9 +211,8 @@ export default function Home() {
           </button>
         </div>
       </aside>
-      {/* --- RESULTS AREA --- */}
+
       <main className="flex-1 bg-slate-50 p-8 overflow-y-auto print:w-full print:p-0 print:bg-white print:overflow-visible print:h-auto">
-        {/* Error Banner */}
         {error && (
           <div className="mb-6 bg-red-50 border-l-4 border-red-500 p-4 rounded-md shadow-sm flex justify-between items-start animate-fade-in-down">
             <div className="flex">
@@ -182,6 +237,17 @@ export default function Home() {
           </div>
         )}
 
+        {warnings.length > 0 && (
+          <div className="mb-6 bg-amber-50 border-l-4 border-amber-500 p-4 rounded-md shadow-sm">
+            <p className="text-sm font-semibold text-amber-800 mb-1">Review recommended</p>
+            <ul className="text-sm text-amber-900 list-disc list-inside space-y-1">
+              {warnings.map((w) => (
+                <li key={w}>{w}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {!groups ? (
           <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-60">
             <p className="text-lg font-medium">Ready to Group</p>
@@ -190,64 +256,79 @@ export default function Home() {
         ) : (
           <div className="max-w-6xl mx-auto">
 
-            {/* Header Section */}
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex justify-between items-center mb-2">
               <h2 className="text-xl font-bold text-slate-800">Generated Groups</h2>
-
-              {/* BUTTONS GROUP: Print & Clear Side-by-Side */}
               <div className="flex gap-3 print:hidden">
-
-                {/* 1. Print Button */}
                 <button
                   onClick={() => window.print()}
                   className="flex items-center gap-2 text-sm font-bold text-indigo-600 border border-indigo-200 bg-indigo-50 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                  </svg>
                   Print Report
                 </button>
-
-                {/* 2. Clear Button (Moved here) */}
                 <button
-                  onClick={() => setGroups(null)}
+                  onClick={clearResults}
                   className="text-sm text-slate-500 hover:text-red-500 px-2"
                 >
                   Clear Results
                 </button>
               </div>
             </div>
+            {resultSummary && (
+              <p className="text-sm text-slate-600 mb-6">{resultSummary}</p>
+            )}
 
-            {/* Groups Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 print:block print:columns-2">
-              {groups.map((group) => (
+              {groups.map((group) => {
+                const styleCounts = group.members.reduce<Record<string, number>>(
+                  (acc, m) => {
+                    const s = m.Learning_Style ?? "Unknown";
+                    acc[s] = (acc[s] ?? 0) + 1;
+                    return acc;
+                  },
+                  {}
+                );
+                const styleOrder = ["Visual", "Auditory", "Kinesthetic"];
+                const styleBreakdown = styleOrder
+                  .filter((s) => styleCounts[s])
+                  .map((s) => `${s.charAt(0)} ${styleCounts[s]}`)
+                  .join(" · ");
+                return (
                 <div key={group.id} className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden hover:shadow-md transition print:break-inside-avoid print:mb-6 print:border print:shadow-none">
-                  {/* Header with Stats */}
                   <div className="bg-indigo-50/50 px-4 py-3 border-b border-indigo-50">
                     <div className="flex justify-between items-center print:bg-slate-100 print:border-slate-300">
                       <span className="font-bold text-indigo-900 print:text-black">Group {group.id}</span>
                       <span className="text-xs font-semibold bg-white px-2 py-1 rounded text-slate-500 border border-slate-100 print:border-slate-400">{group.stats.size}</span>
                     </div>
-                    {/* Mini Stats Display */}
-                    <div className="flex gap-2 text-[10px] text-slate-500 uppercase tracking-wider">
+                    <div className="flex flex-wrap gap-2 text-[10px] text-slate-500 uppercase tracking-wider">
                       <div>Motiv: <span className="font-bold text-slate-700">{group.stats.avg_motivation}</span></div>
+                      {group.stats.avg_self_esteem != null && (
+                        <div>Self: <span className="font-bold text-slate-700">{group.stats.avg_self_esteem}</span></div>
+                      )}
                       <div>Work: <span className="font-bold text-slate-700">{group.stats.avg_work_ethic}</span></div>
                     </div>
+                    {styleBreakdown && (
+                      <div
+                        className="mt-1 text-[10px] text-slate-500 uppercase tracking-wider"
+                        title="Learning styles in this group (Visual / Auditory / Kinesthetic)"
+                      >
+                        Styles: <span className="font-bold text-slate-700">{styleBreakdown}</span>
+                      </div>
+                    )}
                   </div>
 
-                  {/* Members */}
                   <ul className="divide-y divide-slate-50">
-                    {group.members.map((member, idx) => (
-                      <li key={idx} className="px-4 py-2 text-sm text-slate-600 flex items-center">
+                    {group.members.map((member) => (
+                      <li key={member.Name} className="px-4 py-2 text-sm text-slate-600 flex items-center">
                         <div className="w-6 h-6 rounded-full bg-slate-100 text-slate-500 text-xs flex items-center justify-center mr-3 font-bold select-none">
-                          {member.Name.charAt(0)}
+                          {(member.Name?.charAt(0) ?? "?").toUpperCase()}
                         </div>
-                        <span className="truncate">{member.Name}</span>
+                        <span className="truncate">{member.Name ?? "Unknown"}</span>
                       </li>
                     ))}
                   </ul>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

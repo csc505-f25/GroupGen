@@ -1,102 +1,87 @@
 """
-K-Medoids (PAM) Clustering Module
+K-Medoids (PAM) on a precomputed distance matrix.
 
-Implements the PAM (Partitioning Around Medoids) algorithm for clustering.
-K-Medoids is useful for:
-- Non-Euclidean distance metrics (e.g., Manhattan/L1)
-- Robustness to outliers
-- Interpretability (medoids are actual data points)
+Production uses this with the psychometric Manhattan matrix from
+``clustering.compute_psychometric_distance_matrix`` (see ``pipeline.py``).
 
-This module is separate from clustering.py to keep original K-Means implementation intact.
+Properties:
+  - Works with non-Euclidean distances (Manhattan/L1)
+  - Medoids are real students (interpretable)
+  - Default ``random_state=42`` for reproducible studies
 """
 
 import numpy as np
-from typing import Tuple, Optional
-from sklearn.metrics import pairwise_distances
+
+DEFAULT_RANDOM_STATE = 42
 
 
 def kmedoids_pam(
     X: np.ndarray,
     K: int,
-    random_state: Optional[int] = None,
-    max_iter: int = 200
+    random_state: int = DEFAULT_RANDOM_STATE,
+    max_iter: int = 200,
 ):
     """
     Simple PAM (Partitioning Around Medoids) implementation.
 
-    K-Medoids clusters data by finding K representative points (medoids) that
-    minimize the total within-cluster distance. Unlike K-Means, medoids are
-    actual data points, making results more interpretable.
-
     Args:
-        X: NxN distance matrix (numeric). X[i, j] represents the distance between point i and j.
+        X: NxN distance matrix. X[i, j] = distance between student i and j.
         K: Number of medoids/clusters
-        random_state: Seed for reproducibility
+        random_state: Seed for reproducible medoid initialization (default 42)
         max_iter: Maximum number of swap iterations
 
     Returns:
         labels: Length-N array of cluster labels (0 to K-1)
         medoid_indices: Length-K array of indices of chosen medoid points
     """
-    if random_state is not None:
-        np.random.seed(random_state)
+    rng = np.random.default_rng(random_state)
 
     N = X.shape[0]
     if K <= 0 or K > N:
         raise ValueError(f"K must be between 1 and {N}")
 
-    # Precompute full distance matrix (PAM uses it extensively)
-    # D = pairwise_distances(X, metric=distance_metric)
-
-    # Initialize medoids: random unique indices
-    medoid_indices = np.random.choice(N, K, replace=False).tolist()
+    # Pick K students as initial medoids (seeded RNG → reproducible studies).
+    medoid_indices = rng.choice(N, K, replace=False).tolist()
 
     def assign_labels_to_medoids(medoid_list):
-        """Assign each point to the nearest medoid."""
+        # Each student joins the cluster whose medoid is closest in the distance matrix.
         medoid_arr = np.array(medoid_list)
-        distances_to_medoids = X[:, medoid_arr]  # shape (N, K)
-        labels = np.argmin(distances_to_medoids, axis=1)
-        return labels
+        distances_to_medoids = X[:, medoid_arr]
+        return np.argmin(distances_to_medoids, axis=1)
 
     def compute_cost(labels, medoid_list):
-        """Compute total within-cluster distance (cost)."""
+        # Total distance from each student to their cluster medoid (PAM objective).
         medoid_arr = np.array(medoid_list)
-        cost = X[np.arange(N), medoid_arr[labels]].sum()
-        return cost
+        return float(X[np.arange(N), medoid_arr[labels]].sum())
 
-    # Initial assignment and cost
     labels = assign_labels_to_medoids(medoid_indices)
     current_cost = compute_cost(labels, medoid_indices)
 
-    # PAM swap phase: try improving by swapping medoids with non-medoids
-    for iteration in range(max_iter):
+    # SWAP phase: try replacing one medoid at a time; stop when no improvement.
+    for _ in range(max_iter):
         improved = False
 
-        for i, current_medoid in enumerate(medoid_indices):
+        for i, _current_medoid in enumerate(medoid_indices):
             for candidate in range(N):
-                # Skip if candidate is already a medoid
                 if candidate in medoid_indices:
-                    continue
+                    continue  # medoids must be unique
 
-                # Try swapping medoid_indices[i] with candidate
                 candidate_medoids = medoid_indices.copy()
                 candidate_medoids[i] = candidate
 
                 candidate_labels = assign_labels_to_medoids(candidate_medoids)
                 candidate_cost = compute_cost(candidate_labels, candidate_medoids)
 
-                # Accept swap if it improves cost
                 if candidate_cost < current_cost:
                     medoid_indices = candidate_medoids
                     labels = candidate_labels
                     current_cost = candidate_cost
                     improved = True
-                    break  # Accept first improving swap and restart
+                    break
 
             if improved:
                 break
 
-        # If no improvement found, algorithm has converged
         if not improved:
             break
 
