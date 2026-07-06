@@ -43,6 +43,101 @@ type ApiResponse = {
   groups: Group[];
 };
 
+function styleBreakdownForGroup(group: Group): string {
+  const styleCounts = group.members.reduce<Record<string, number>>((acc, m) => {
+    const s = m.Learning_Style ?? "Unknown";
+    acc[s] = (acc[s] ?? 0) + 1;
+    return acc;
+  }, {});
+  const styleOrder = ["Visual", "Auditory", "Kinesthetic"];
+  return styleOrder
+    .filter((s) => styleCounts[s])
+    .map((s) => `${s.charAt(0)} ${styleCounts[s]}`)
+    .join(" · ");
+}
+
+async function downloadGroupsPdf(
+  groups: Group[],
+  resultSummary: string | null,
+  warnings: string[]
+) {
+  const { jsPDF } = await import("jspdf");
+  const doc = new jsPDF({ unit: "pt", format: "letter" });
+  const margin = 48;
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const contentWidth = pageWidth - margin * 2;
+  const lineHeight = 14;
+  let y = margin;
+
+  const ensureSpace = (needed: number) => {
+    if (y + needed > pageHeight - margin) {
+      doc.addPage();
+      y = margin;
+    }
+  };
+
+  const writeLine = (text: string, fontSize = 10, style: "normal" | "bold" = "normal") => {
+    doc.setFontSize(fontSize);
+    doc.setFont("helvetica", style);
+    const lines = doc.splitTextToSize(text, contentWidth) as string[];
+    for (const line of lines) {
+      ensureSpace(lineHeight);
+      doc.text(line, margin, y);
+      y += lineHeight;
+    }
+  };
+
+  writeLine("GroupGen — Generated Groups", 18, "bold");
+  y += 4;
+  if (resultSummary) writeLine(resultSummary);
+  if (warnings.length > 0) {
+    y += 4;
+    writeLine("Review recommended:", 10, "bold");
+    for (const warning of warnings) {
+      writeLine(`• ${warning}`);
+    }
+  }
+
+  const sortedGroups = [...groups].sort((a, b) => a.id - b.id);
+  for (const group of sortedGroups) {
+    y += 10;
+    ensureSpace(60);
+    writeLine(`Group ${group.id} (${group.stats.size} students)`, 12, "bold");
+    const stats = [
+      `Motivation ${group.stats.avg_motivation}`,
+      group.stats.avg_self_esteem != null
+        ? `Self-Esteem ${group.stats.avg_self_esteem}`
+        : null,
+      `Work Ethic ${group.stats.avg_work_ethic}`,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    writeLine(stats, 9);
+    const styles = styleBreakdownForGroup(group);
+    if (styles) writeLine(`Learning styles: ${styles}`, 9);
+
+    const sortedMembers = [...group.members].sort((a, b) =>
+      (a.Name ?? "").localeCompare(b.Name ?? "")
+    );
+    for (const member of sortedMembers) {
+      const details = [
+        member.Gender,
+        member.Diversity,
+        member.Learning_Style,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      writeLine(
+        details ? `${member.Name ?? "Unknown"} — ${details}` : (member.Name ?? "Unknown"),
+        10
+      );
+    }
+  }
+
+  doc.save("groupgen_groups.pdf");
+}
+
 function formatApiError(detail: unknown, fallback: string): string {
   if (detail == null) return fallback;
   if (typeof detail === "string") return detail;
@@ -70,6 +165,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [groupSize, setGroupSize] = useState(5);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setError(null);
@@ -145,6 +241,16 @@ export default function Home() {
     setGroups(null);
     setResultSummary(null);
     setWarnings([]);
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!groups) return;
+    setDownloadingPdf(true);
+    try {
+      await downloadGroupsPdf(groups, resultSummary, warnings);
+    } finally {
+      setDownloadingPdf(false);
+    }
   };
 
   return (
@@ -258,12 +364,13 @@ export default function Home() {
 
             <div className="flex justify-between items-center mb-2">
               <h2 className="text-xl font-bold text-slate-800">Generated Groups</h2>
-              <div className="flex gap-3 print:hidden">
+              <div className="flex items-center gap-3 print:hidden">
                 <button
-                  onClick={() => window.print()}
-                  className="flex items-center gap-2 text-sm font-bold text-indigo-600 border border-indigo-200 bg-indigo-50 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition"
+                  onClick={handleDownloadPdf}
+                  disabled={downloadingPdf}
+                  className="flex items-center gap-2 text-sm font-bold text-indigo-600 border border-indigo-200 bg-indigo-50 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition disabled:opacity-60"
                 >
-                  Print Report
+                  {downloadingPdf ? "Preparing PDF..." : "Download PDF"}
                 </button>
                 <button
                   onClick={clearResults}
@@ -279,19 +386,7 @@ export default function Home() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 print:block print:columns-2">
               {groups.map((group) => {
-                const styleCounts = group.members.reduce<Record<string, number>>(
-                  (acc, m) => {
-                    const s = m.Learning_Style ?? "Unknown";
-                    acc[s] = (acc[s] ?? 0) + 1;
-                    return acc;
-                  },
-                  {}
-                );
-                const styleOrder = ["Visual", "Auditory", "Kinesthetic"];
-                const styleBreakdown = styleOrder
-                  .filter((s) => styleCounts[s])
-                  .map((s) => `${s.charAt(0)} ${styleCounts[s]}`)
-                  .join(" · ");
+                const styleBreakdown = styleBreakdownForGroup(group);
                 return (
                 <div key={group.id} className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden hover:shadow-md transition print:break-inside-avoid print:mb-6 print:border print:shadow-none">
                   <div className="bg-indigo-50/50 px-4 py-3 border-b border-indigo-50">
