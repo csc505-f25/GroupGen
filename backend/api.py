@@ -1,122 +1,136 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+"""
+GroupGen REST API — classroom study upload endpoint.
+
+Flow:
+  1. Accept multipart CSV + ``group_size`` query param
+  2. ``prepare_for_grouping`` — auto-detects raw Google Forms exports via
+     ``group_gen_intake`` and converts to clustering columns; HTTP 400 on bad data
+  3. ``run_grouping_pipeline`` — HTTP 422 on invariant/size failures
+  4. ``to_json_safe`` entire response (NumPy/pandas → JSON primitives)
+
+The API is stateless: no files written server-side. See ``docs/ARCHITECTURE.md``.
+"""
+
+from fastapi import FastAPI, UploadFile, File, HTTPException, Query, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 import pandas as pd
-import io
 import numpy as np
 
-# Import the logic we already verified in clustering.py
-from clustering import (
-    compute_feature_vector, 
-    compute_distance_matrix, 
-    enforce_group_size, 
-    check_gender_isolation, 
-    fix_gender_isolation, 
-    check_diversity_isolation,
-    fix_diversity_isolation
-)
-from kmedoids import kmedoids_pam
+from .data_loader import prepare_for_grouping
+from .group_config import calculate_n_groups
+from .http_util import format_error_detail
+from .invariants import InvariantViolation
+from .json_util import to_json_safe
+from .pipeline import run_grouping_pipeline
 
 app = FastAPI(title="GroupGen API")
 
-# Enable CORS for Frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Study CSVs are small; cap prevents accidental huge uploads.
+MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content={"detail": format_error_detail(exc.errors())},
+    )
+
 
 @app.get("/")
 def health_check():
     return {"status": "GroupGen API is running"}
 
+
+def _member_records(group_df: pd.DataFrame) -> list:
+    """Student rows for API without internal Group_ID column (id lives on parent group)."""
+    cols = [c for c in group_df.columns if c != "Group_ID"]
+    return group_df[cols].replace({np.nan: None}).to_dict(orient="records")
+
+
 @app.post("/generate-groups")
 async def generate_groups(
-    file: UploadFile = File(...), 
-    group_size: int = 5,
+    file: UploadFile = File(...),
+    group_size: int = Query(5, ge=2, le=50, description="Target students per group"),
 ):
-    """
-    Stateless Endpoint: Receives CSV -> Returns Groups + Stats
-    """
-    # 1. READ FILE
-    if not file.filename.endswith('.csv'):
-        raise HTTPException(status_code=400, detail="File must be a CSV")
-    
+    """Upload a CSV (e.g. from Google Forms) and receive balanced groups."""
+    if not file.filename or not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="File must be a .csv export.")
+
+    contents = await file.read()  # raw bytes — parsed only inside prepare_for_grouping
+
+    if len(contents) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=400, detail="File too large (max 5 MB).")
+    if not contents.strip():
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+    # --- Ingest boundary: nothing below runs if CSV is invalid ---
     try:
-        contents = await file.read()
-        df = pd.read_csv(io.BytesIO(contents))
+        df = prepare_for_grouping(contents)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Could not parse CSV: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Could not parse CSV: {e}")
 
-    # 2. VALIDATE COLUMNS
-    required_cols = ['Name', 'Motivation', 'Self_Esteem', 'Work_Ethic', 'Learning_Style', 'Gender', 'Diversity']
-    missing = [col for col in required_cols if col not in df.columns]
-    if missing:
-        raise HTTPException(status_code=400, detail=f"Missing columns: {missing}")
-
-    # 3. RUN THE PIPELINE
     try:
-        # A. Features
-        feature_matrix = compute_feature_vector(df)
-        euc_dist, dist_manhattan, _ = compute_distance_matrix(df, feature_matrix)
+        result = run_grouping_pipeline(df, group_size, verbose=False)
+        labels = result.labels
+        # 1-based Group_ID for teachers; clustering still used 0-based labels internally.
+        df = df.copy()
+        df["Group_ID"] = labels + 1
 
-        # B. Clustering (K-Medoids Manhattan)
-        n_students = len(df)
-        n_groups = max(1, int(np.ceil(n_students / group_size)))
-        
-        labels, _ = kmedoids_pam(dist_manhattan, n_groups, random_state=42)
-
-        # C. Enforce Size
-        labels = enforce_group_size(labels, group_size, feature_matrix=feature_matrix, metric='manhattan')
-
-        # D. Apply Constraints (Locking)
-        isolated_gender = check_gender_isolation(df, labels)
-        if isolated_gender:
-            labels = fix_gender_isolation(df, labels, dist_manhattan, isolated_gender)
-        
-        isolated_diversity = check_diversity_isolation(df, labels)
-        if isolated_diversity:
-            labels = fix_diversity_isolation(df, labels, dist_manhattan, isolated_diversity)
-
-        # 4. FORMAT RESPONSE & CALCULATE STATS
-        df['Group_ID'] = labels + 1
-        
         response_groups = []
-        unique_ids = sorted(df['Group_ID'].unique())
-        
+        unique_ids = sorted(df["Group_ID"].unique())
+
         for g_id in unique_ids:
-            # Get members as a list of dicts (handle NaN)
-            group_df = df[df['Group_ID'] == g_id]
-            members = group_df.replace({np.nan: None}).to_dict(orient='records')
-            
-            # --- THE COOL STATS LOGIC YOU WANTED ---
+            group_df = df[df["Group_ID"] == g_id]
+            members = _member_records(group_df)
+            gender_balance = to_json_safe(
+                group_df["Gender"].value_counts().to_dict()
+            )
+            learning_styles = to_json_safe(
+                group_df["Learning_Style"].mode().tolist()
+            )
             stats = {
                 "size": len(members),
-                "avg_motivation": round(group_df['Motivation'].mean(), 2),
-                "avg_work_ethic": round(group_df['Work_Ethic'].mean(), 2),
-                "gender_balance": group_df['Gender'].value_counts().to_dict(),
-                "learning_styles": group_df['Learning_Style'].mode().tolist() # Most common style
+                "avg_motivation": round(float(group_df["Motivation"].mean()), 2),
+                "avg_self_esteem": round(float(group_df["Self_Esteem"].mean()), 2),
+                "avg_work_ethic": round(float(group_df["Work_Ethic"].mean()), 2),
+                "gender_balance": gender_balance,
+                "learning_styles": learning_styles,
             }
-            
-            response_groups.append({
-                "id": int(g_id),
-                "members": members,
-                "stats": stats
-            })
+            response_groups.append(
+                {"id": int(g_id), "members": members, "stats": stats}
+            )
 
-        return {
-            "status": "success",
-            "total_students": n_students,
+        # Warnings mean groups are valid but fairness may need a manual look.
+        status = "success" if not result.warnings else "success_with_warnings"
+
+        # Whole tree sanitized so browser never sees np.int64 / nan / inf.
+        return to_json_safe({
+            "status": status,
+            "total_students": len(df),
             "total_groups": len(unique_ids),
-            "groups": response_groups
-        }
+            "target_group_size": group_size,
+            "configured_groups": calculate_n_groups(len(df), group_size),
+            "group_size_summary": result.group_size_range,
+            "warnings": result.warnings,
+            "groups": response_groups,
+        })
 
+    except InvariantViolation as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
-        import traceback
-        traceback.print_exc() 
-        raise HTTPException(status_code=500, detail=f"Algorithm Error: {str(e)}")
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+        raise HTTPException(status_code=500, detail=f"Grouping failed: {e}")
