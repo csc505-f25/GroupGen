@@ -16,8 +16,19 @@ import pandas as pd
 from .vak_answer_catalog import score_learning_style_from_row
 
 
+def _require_finite_mean(mean_val: float, section: str) -> float:
+    """Reject empty or non-numeric Likert sections instead of silently bucketing."""
+    if pd.isna(mean_val) or not np.isfinite(mean_val):
+        raise ValueError(
+            f"{section} section has no valid numeric responses. "
+            "Ensure every student answered the Likert items in that block."
+        )
+    return float(mean_val)
+
+
 def _mean_to_1_4_mot_we(mean_val: float) -> int:
     """Map a section mean (1–4 Likert) to discrete 1–4 buckets."""
+    mean_val = _require_finite_mean(mean_val, "Motivation/work ethic")
     if mean_val <= 2.0:
         return 1
     if mean_val <= 2.6:
@@ -29,6 +40,7 @@ def _mean_to_1_4_mot_we(mean_val: float) -> int:
 
 def _mean_to_1_4_se(mean_val: float) -> int:
     """Map a 1–7 self-esteem mean to 1–4 scale."""
+    mean_val = _require_finite_mean(mean_val, "Self-esteem")
     if mean_val <= 2.5:
         return 1
     if mean_val <= 4.0:

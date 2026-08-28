@@ -3,10 +3,10 @@ Feature engineering, distance matrices, and post-clustering adjustments.
 
 Production path (via ``pipeline.run_grouping_pipeline``):
   - ``compute_feature_vector`` — Motivation, Self_Esteem, Work_Ethic, Learning_Style only
-  - ``compute_psychometric_distance_matrix`` — Manhattan for clustering and swaps
-  - ``enforce_group_size`` — balance counts after K-Medoids
-  - ``rebalance_demographic_column`` — spread gender/diversity into pairs across groups
-  - ``check_*_isolation`` — residual lone-category warnings
+  - ``compute_psychometric_distance_matrix`` — Manhattan for clustering and size balancing
+  - ``enforce_group_size`` — balance counts after K-Medoids by moving the student
+    closest (Manhattan) to the undersized group's medoid
+  - ``check_*_isolation`` / ``rebalance_demographic_column`` — legacy research helpers (not used by production pipeline on ``feature-only-clustering``)
 
 Research / legacy (not used for live classroom grouping):
   - ``compute_distance_matrix`` — also builds optional Gower matrix (includes demographics)
@@ -35,6 +35,25 @@ from .kmedoids import kmedoids_pam
 # 1. Feature Engineering & Distances
 # ==========================================
 
+def _cluster_medoid_index(
+    distance_matrix: np.ndarray, member_indices: np.ndarray
+) -> int:
+    """
+    Index of the cluster medoid under the given distance matrix.
+
+    The medoid minimizes total distance to other members of the same cluster
+    (same definition as K-Medoids). Ties break toward the smallest row index
+    via ``argmin``.
+    """
+    members = np.asarray(member_indices, dtype=int)
+    if members.size == 0:
+        raise ValueError("Cannot compute medoid of an empty cluster.")
+    if members.size == 1:
+        return int(members[0])
+    sub = distance_matrix[np.ix_(members, members)]
+    return int(members[int(np.argmin(sub.sum(axis=1)))])
+
+
 def enforce_group_size(
     labels: np.ndarray,
     group_size: int,
@@ -47,8 +66,13 @@ def enforce_group_size(
     Redistribute students so each group matches the ceil(n/k) size distribution.
 
     Target counts: ``base = n // k`` and ``base + 1`` for the remainder groups.
-    Production passes the psychometric ``distance_matrix``; evaluation may use
-    ``feature_matrix`` centroid distance instead.
+
+    Production passes the psychometric Manhattan ``distance_matrix`` (same matrix
+    used by K-Medoids). Each move picks the oversized-group student closest to
+    the **medoid** of an undersized group — not nearest neighbor to any member,
+    and not Gender/Diversity.
+
+    Evaluation may instead pass ``feature_matrix`` (distance to arithmetic mean).
 
     Raises ``ValueError`` if balancing cannot complete within ``2 * n`` moves.
     """
@@ -87,15 +111,20 @@ def enforce_group_size(
         min_cost = float("inf")
 
         if distance_matrix is not None:
-            # Production: pick the donor→receiver move with smallest Manhattan edge.
+            # Production: move the donor student closest to the receiver medoid (Manhattan).
+            receiver_medoids: dict = {}
+            for r_id in receivers:
+                receiver_indices = np.where(new_labels == r_id)[0]
+                if receiver_indices.size == 0:
+                    continue
+                receiver_medoids[r_id] = _cluster_medoid_index(
+                    distance_matrix, receiver_indices
+                )
+
             for d_id in donors:
                 for student_idx in np.where(new_labels == d_id)[0]:
-                    for r_id in receivers:
-                        receiver_mask = new_labels == r_id
-                        if not np.any(receiver_mask):
-                            continue
-                        receiver_indices = np.where(receiver_mask)[0]
-                        cost = float(np.min(distance_matrix[student_idx, receiver_indices]))
+                    for r_id, medoid_idx in receiver_medoids.items():
+                        cost = float(distance_matrix[student_idx, medoid_idx])
                         if np.isfinite(cost) and cost < min_cost:
                             min_cost = cost
                             best_move = (int(student_idx), r_id)

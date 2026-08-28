@@ -7,7 +7,11 @@ __pycache__/
 
 # ---- Virtual Environment ----
 venv/
+venv-gpu/
 env/
+
+# ---- Test cache ----
+.pytest_cache/
 
 # ---- Data files ----
 *.db
@@ -16,6 +20,9 @@ env/
 # Keep study templates (teachers copy this layout)
 !backend/data/templates/
 !backend/data/templates/**
+# Pilot study survey exports (needed for Colab clone + notebook)
+!docs/Inclass_data/
+!docs/Inclass_data/**
 
 # ---- IDE / Editor ----
 .vscode/

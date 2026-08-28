@@ -9,6 +9,8 @@ import seaborn as sns
 # =====================================================================
 # Anchor paths to this script's folder so it runs from any working directory.
 SCRIPT_DIR = Path(__file__).resolve().parent
+FIGURES_DIR = SCRIPT_DIR / "output" / "figures"
+FIGURES_DIR.mkdir(parents=True, exist_ok=True)
 CSV_PATH = (
     SCRIPT_DIR
     / "Inclass_data"
@@ -117,7 +119,7 @@ for col in demo_cols:
         plt.ylabel('Student Counter')
         plt.xticks(rotation=15, ha='right')
         plt.tight_layout()
-        plt.savefig(SCRIPT_DIR / f'distribution_{col}.png')
+        plt.savefig(FIGURES_DIR / f'distribution_{col}.png')
         plt.close()
 
 # =====================================================================
@@ -141,7 +143,7 @@ plt.title('Distribution of Overall Student Confidence')
 plt.xlabel('Average Score Matrix')
 plt.ylabel('Number of Students')
 plt.tight_layout()
-plt.savefig(SCRIPT_DIR / 'distribution_overall_confidence.png')
+plt.savefig(FIGURES_DIR / 'distribution_overall_confidence.png')
 plt.close()
 
 print("Mathematical metrics computed successfully!")

@@ -1,14 +1,8 @@
 """
-Demographic spread for fairness swaps (no sklearn).
+Demographic spread helpers for fairness swaps (legacy / research).
 
-After psychometric clustering, pair up students who share the same **minority**
-gender or ethnicity label — for **every** value in ``Gender`` and ``Diversity``
-(Male, Female, Non-binary, Prefer not to say, Hispanic/Latinx, Asian American, …).
-
-Majority labels in a class (more than half the roster) are left alone so their
-rebalance does not undo minority pairing. Examples for a minority of size 5:
-spread 2+2+1 across groups; for 2 students, one group of 2 together. One leftover
-singleton may remain when counts do not divide evenly — that is expected.
+NOT invoked by ``pipeline.run_grouping_pipeline`` on the ``feature-only-clustering``
+branch. Kept for unit tests and evaluation scripts that opt in explicitly.
 """
 
 from __future__ import annotations

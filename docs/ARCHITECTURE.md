@@ -2,13 +2,14 @@
 
 How data flows through GroupGen for developers and researchers auditing the classroom study pipeline.
 
+> **Branch `feature-only-clustering`:** `run_grouping_pipeline` does **not** run demographic fairness swaps. Gender/Diversity are ingest/display fields only.
+
 ## Design goals
 
 1. **Homogeneous skill groups** — cluster on motivation, self-esteem, work ethic, and learning style (Manhattan distance).
-2. **Fair representation** — swap students so no one is the only member of their gender or diversity category when fixable.
-3. **Predictable sizes** — `ceil(n / target_size)` groups, then balance (e.g. 31 @ 5 → seven groups of 4 and 5).
-4. **One production path** — Web UI, API, and CLI: `prepare_for_grouping` → `run_grouping_pipeline`.
-5. **Raw Form support** — teachers upload Google Forms CSV without a manual scoring step.
+2. **Predictable sizes** — `ceil(n / target_size)` groups, then balance (e.g. 31 @ 5 → seven groups of 4 and 5).
+3. **One production path** — Web UI, API, and CLI: `prepare_for_grouping` → `run_grouping_pipeline`.
+4. **Raw Form support** — teachers upload Google Forms CSV without a manual scoring step.
 
 ## Entry points
 
@@ -38,7 +39,7 @@ CSV bytes / file path
 │  run_grouping_pipeline (pipeline)           │
 │  features + Manhattan matrix                │
 │  kmedoids_pam (seed 42)                     │
-│  enforce_group_size → fairness → invariants │
+│  enforce_group_size → invariants            │
 └────────────────────────────────────────────┘
         │
         ▼
@@ -91,11 +92,18 @@ Does **not** guess style from keywords; only catalog text (and bare `A`/`B`/`C` 
 
 Orchestrator; mutates only `labels`, not profile columns.
 
-Fairness uses the same Manhattan matrix as clustering (psychometric features only).
+Production lifecycle: features → Manhattan matrix → K-Medoids → size balance → invariants → per-team cohesion. Demographic fields in the roster are never fed into distance or swap logic on this branch.
+
+## `backend/cohesion.py` / `backend/research_export.py`
+
+- `compute_team_cohesion` — per-team mean pairwise L1 (lower = more similar profiles); attached to `GroupingResult.team_cohesion`.
+- `build_research_dataframe` / `write_research_exports` — CLI writes `research_export.csv` (student_id, z-features, cohesion IV) and `team_cohesion.csv`.
 
 ## `backend/clustering.py` / `kmedoids.py` / `invariants.py`
 
-See prior architecture: features, PAM, size enforcement, swap caps, `InvariantViolation` → HTTP 422.
+Features (psychometric only), PAM, size enforcement, `InvariantViolation` → HTTP 422.
+
+`fairness_distribution.py` and isolation helpers in `clustering.py` remain for research/tests but are not invoked by `run_grouping_pipeline`.
 
 ## `backend/api.py`
 
@@ -105,7 +113,14 @@ See prior architecture: features, PAM, size enforcement, swap caps, `InvariantVi
 
 ## `backend/generate_groups.py` + `run_manifest.py`
 
-Per-run folder under `backend/output/runs/`. Raw Form inputs also write `raw_responses_with_groups.csv`.
+Per-run folder under `backend/output/runs/`:
+
+- `final_groups.csv` — teacher roster + `Group_ID`
+- `research_export.csv` — anonymized `student_id`, z-scored features, `intra_team_cohesion_score`
+- `team_cohesion.csv` — one row per team
+- `run_manifest.json` — seed, strategy, PAM cost, git commit
+
+Raw Form inputs also write `raw_responses_with_groups.csv`.
 
 ## Sample data
 
@@ -135,7 +150,7 @@ Rebuild: `python backend/data/templates/_build_samples.py`
     {
       "id": 1,
       "members": [{ "Name": "...", "Gender": "...", "Learning_Style": "Visual", ... }],
-      "stats": { "size": 5, "avg_motivation": 3.2, ... }
+      "stats": { "size": 5, "avg_motivation": 3.2, "intra_team_cohesion_score": 1.20, ... }
     }
   ]
 }

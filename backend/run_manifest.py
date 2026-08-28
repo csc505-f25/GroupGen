@@ -9,9 +9,23 @@ the roster file.
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
+
+
+def _git_commit_short() -> str | None:
+    try:
+        out = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+        return out.strip() or None
+    except (OSError, subprocess.CalledProcessError):
+        return None
 
 
 def write_run_manifest(
@@ -24,6 +38,11 @@ def write_run_manifest(
     random_state: int = 42,
     warnings: Optional[List[str]] = None,
     output_csv: str,
+    research_csv: str | None = None,
+    team_cohesion_csv: str | None = None,
+    size_strategy: str | None = None,
+    pam_cost: float | None = None,
+    backend: str | None = None,
 ) -> Path:
     """Write run_manifest.json beside CLI outputs."""
     manifest_path = run_dir / "run_manifest.json"
@@ -31,11 +50,18 @@ def write_run_manifest(
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "input_path": input_path,
         "output_csv": output_csv,
+        "research_csv": research_csv,
+        "team_cohesion_csv": team_cohesion_csv,
         "n_students": n_students,
         "target_group_size": target_group_size,
         "n_groups": n_groups,
         "random_state": random_state,
-        "warnings": warnings or [],  # leftover fairness issues, if any
+        "size_strategy": size_strategy,
+        "pam_cost": pam_cost,
+        "backend": backend,
+        "python_version": sys.version.split()[0],
+        "git_commit": _git_commit_short(),
+        "warnings": warnings or [],
     }
     manifest_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return manifest_path

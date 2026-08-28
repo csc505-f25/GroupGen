@@ -62,6 +62,10 @@ def _member_records(group_df: pd.DataFrame) -> list:
 async def generate_groups(
     file: UploadFile = File(...),
     group_size: int = Query(5, ge=2, le=50, description="Target students per group"),
+    backend: str = Query(
+        "cpu",
+        description="Compute backend: cpu, gpu (auto), cuda, or directml",
+    ),
 ):
     """Upload a CSV (e.g. from Google Forms) and receive balanced groups."""
     if not file.filename or not file.filename.lower().endswith(".csv"):
@@ -83,7 +87,7 @@ async def generate_groups(
         raise HTTPException(status_code=400, detail=f"Could not parse CSV: {e}")
 
     try:
-        result = run_grouping_pipeline(df, group_size, verbose=False)
+        result = run_grouping_pipeline(df, group_size, verbose=False, backend=backend)
         labels = result.labels
         # 1-based Group_ID for teachers; clustering still used 0-based labels internally.
         df = df.copy()
@@ -95,6 +99,8 @@ async def generate_groups(
         for g_id in unique_ids:
             group_df = df[df["Group_ID"] == g_id]
             members = _member_records(group_df)
+            label = int(g_id) - 1
+            cohesion = result.team_cohesion.get(label, 0.0)
             gender_balance = to_json_safe(
                 group_df["Gender"].value_counts().to_dict()
             )
@@ -106,6 +112,7 @@ async def generate_groups(
                 "avg_motivation": round(float(group_df["Motivation"].mean()), 2),
                 "avg_self_esteem": round(float(group_df["Self_Esteem"].mean()), 2),
                 "avg_work_ethic": round(float(group_df["Work_Ethic"].mean()), 2),
+                "intra_team_cohesion_score": round(float(cohesion), 6),
                 "gender_balance": gender_balance,
                 "learning_styles": learning_styles,
             }
@@ -113,7 +120,7 @@ async def generate_groups(
                 {"id": int(g_id), "members": members, "stats": stats}
             )
 
-        # Warnings mean groups are valid but fairness may need a manual look.
+        # Warnings field kept for API backward compatibility (empty on feature-only branch).
         status = "success" if not result.warnings else "success_with_warnings"
 
         # Whole tree sanitized so browser never sees np.int64 / nan / inf.
@@ -125,9 +132,13 @@ async def generate_groups(
             "configured_groups": calculate_n_groups(len(df), group_size),
             "group_size_summary": result.group_size_range,
             "warnings": result.warnings,
+            "backend": result.backend,
+            "backend_label": result.backend_label,
+            "timing_ms": result.timing_ms,
+            "size_strategy": result.size_strategy,
+            "pam_cost": result.pam_cost,
             "groups": response_groups,
         })
-
     except InvariantViolation as e:
         raise HTTPException(status_code=422, detail=str(e))
     except ValueError as e:

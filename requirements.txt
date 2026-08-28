@@ -20,3 +20,10 @@ gower>=0.1.2
 fastapi>=0.95.0
 uvicorn[standard]>=0.22.0
 python-multipart>=0.0.6
+
+# Testing (development)
+pytest>=7.0.0
+
+# Optional GPU backends (install one or both as needed):
+# NVIDIA CUDA:  pip install torch --index-url https://download.pytorch.org/whl/cu124
+# AMD/Intel GPU on Windows:  pip install torch-directml

@@ -2,11 +2,14 @@
 CLI group generator — same pipeline as the study API, with disk output.
 
 Writes per-run artifacts under ``backend/output/runs/<timestamp>_<uuid>/``:
-  - ``final_groups.csv`` — roster with Group_ID
+  - ``final_groups.csv`` — roster with Group_ID (teacher view)
+  - ``research_export.csv`` — anonymized student_id, z-features, cohesion IV
+  - ``team_cohesion.csv`` — one row per team with cohesion score
   - ``final_groups_report.txt`` — printable summary
   - ``run_manifest.json`` — audit metadata (see ``run_manifest.py``)
 
-Environment overrides: ``GROUPGEN_INPUT_CSV``, ``GROUPGEN_OUTPUT_CSV``.
+Environment overrides: ``GROUPGEN_INPUT_CSV``, ``GROUPGEN_OUTPUT_CSV``,
+``GROUPGEN_GROUP_SIZE`` (skip interactive prompt).
 """
 
 import os
@@ -23,6 +26,7 @@ from .group_gen_intake import is_raw_google_form, merge_groups_into_raw_export
 from .group_config import calculate_n_groups
 from .invariants import InvariantViolation
 from .pipeline import DEFAULT_RANDOM_STATE, run_grouping_pipeline
+from .research_export import build_research_dataframe, write_research_exports
 from .run_manifest import write_run_manifest
 
 DEFAULT_INPUT = DEFAULT_TEMPLATE_CSV
@@ -41,6 +45,13 @@ def make_run_output_paths(base_dir: Path = DEFAULT_OUTPUT_DIR) -> tuple[Path, Pa
 
 
 def get_user_target_size() -> int:
+    env = os.environ.get("GROUPGEN_GROUP_SIZE")
+    if env:
+        size = int(env)
+        if size <= 0:
+            raise ValueError("GROUPGEN_GROUP_SIZE must be a positive integer.")
+        return size
+
     while True:
         try:
             user_input = input("\nEnter target number of students per group (e.g., 5): ")
@@ -59,8 +70,9 @@ def save_results(
     output_file: Path,
     *,
     raw_source: pd.DataFrame | None = None,
-) -> None:
-    # Persist human-readable Group_ID (1-based) alongside original survey columns.
+    pipeline_result=None,
+) -> tuple[Path, Path]:
+    """Write teacher roster, research export, and text report."""
     df_final = df.copy()
     df_final["Group_ID"] = np.array(labels).astype(int) + 1
     cols = ["Group_ID"] + [c for c in df_final.columns if c != "Group_ID"]
@@ -71,8 +83,27 @@ def save_results(
     df_final.to_csv(output_path, index=False)
     print(f"\nSUCCESS! Groups saved to: {output_path}")
 
+    if pipeline_result is None or pipeline_result.distance_matrix is None:
+        raise ValueError("Pipeline result must include distance_matrix for research export.")
+
+    research_path, team_path = write_research_exports(
+        df,
+        labels,
+        pipeline_result.distance_matrix,
+        output_path.parent,
+        team_cohesion=pipeline_result.team_cohesion,
+    )
+    print(f"   > Research export: {research_path}")
+    print(f"   > Team cohesion:   {team_path}")
+
     print("   > Generating text report from saved CSV...")
     df_clean = pd.read_csv(output_path)
+    research_df = build_research_dataframe(
+        df,
+        labels,
+        pipeline_result.distance_matrix,
+        team_cohesion=pipeline_result.team_cohesion,
+    )
     report_path = output_path.with_name(output_path.stem + "_report.txt")
 
     with open(report_path, "w", encoding="utf-8") as f:
@@ -86,7 +117,13 @@ def save_results(
 
         for g_id in sorted(df_clean["Group_ID"].unique()):
             group_data = df_clean[df_clean["Group_ID"] == g_id]
-            write_line(f"\n GROUP {g_id} ({len(group_data)} students)")
+            cohesion = research_df.loc[
+                research_df["assigned_team_id"] == g_id, "intra_team_cohesion_score"
+            ].iloc[0]
+            write_line(
+                f"\n GROUP {g_id} ({len(group_data)} students) "
+                f"| cohesion={cohesion:.4f} (mean pairwise L1, lower=more similar)"
+            )
             write_line("-" * 65)
             write_line(f"{'Name':<20} | {'Gender':<8} | {'Ethnicity':<20} | {'Style':<10}")
             write_line("-" * 65)
@@ -108,17 +145,18 @@ def save_results(
         raw_with_groups.to_csv(raw_path, index=False)
         print(f"Original survey export + Group_ID saved to: {raw_path}")
 
+    return research_path, team_path
+
 
 def main() -> None:
     print("\n" + "=" * 60)
     print("GROUPGEN — FINAL GROUP GENERATION")
     print("=" * 60)
 
-    input_path = os.environ.get("GROUPGEN_INPUT_CSV", str(DEFAULT_INPUT))
+    input_path = os.environ.get("GROUPGEN_INPUT_CSV", str(DEFAULT_TEMPLATE_CSV))
     run_dir: Path
 
     if os.environ.get("GROUPGEN_OUTPUT_CSV"):
-        # Custom path still gets manifest in the same directory as the CSV.
         output_csv = Path(os.environ["GROUPGEN_OUTPUT_CSV"])
         output_csv.parent.mkdir(parents=True, exist_ok=True)
         run_dir = output_csv.parent
@@ -128,7 +166,7 @@ def main() -> None:
     print(f"1. Loading data from: {input_path}")
     raw_df = read_csv_source(input_path)
     raw_for_merge = raw_df if is_raw_google_form(raw_df) else None
-    df = prepare_for_grouping(raw_df)  # same ingest as API (includes Google Form transform)
+    df = prepare_for_grouping(raw_df)
 
     target_size = get_user_target_size()
     n_groups = calculate_n_groups(len(df), target_size)
@@ -149,8 +187,11 @@ def main() -> None:
             print(f"  • {w}")
 
     print(f"   > Group sizes: {result.group_size_range}")
+    print(f"   > Size strategy: {result.size_strategy} | PAM cost: {result.pam_cost:.4f}")
 
-    save_results(df, result.labels, output_csv, raw_source=raw_for_merge)
+    research_path, team_path = save_results(
+        df, result.labels, output_csv, raw_source=raw_for_merge, pipeline_result=result
+    )
 
     manifest = write_run_manifest(
         run_dir,
@@ -161,6 +202,11 @@ def main() -> None:
         random_state=DEFAULT_RANDOM_STATE,
         warnings=result.warnings,
         output_csv=str(output_csv),
+        research_csv=str(research_path),
+        team_cohesion_csv=str(team_path),
+        size_strategy=result.size_strategy,
+        pam_cost=result.pam_cost,
+        backend=result.backend,
     )
     print(f"   > Run manifest: {manifest}")
 

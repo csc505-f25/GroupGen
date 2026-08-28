@@ -128,7 +128,8 @@ def main() -> None:
     assert set(scored["Learning_Style"].unique()).issubset({"Visual", "Auditory", "Kinesthetic"})
 
     form_df = prepare_for_grouping(DEFAULT_GOOGLE_FORM_SAMPLE_CSV)
-    form_result = run_grouping_pipeline(form_df, target_size=5, verbose=False)
+    # 100-student sample needs group_size=10 (K=20 collapses with repeated score patterns).
+    form_result = run_grouping_pipeline(form_df, target_size=10, verbose=False)
     assert len(form_result.labels) == len(form_df)
 
     grouped = form_df.copy()

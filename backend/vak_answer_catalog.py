@@ -260,12 +260,15 @@ def is_known_vak_answer(text: str) -> bool:
 
 def _tie_break_seed(answers: Iterable[object]) -> int:
     """Stable seed from a student's VAK answers so tie picks are reproducible."""
+    import hashlib
+
     parts = tuple(
         normalize_vak_text(str(v))
         for v in answers
         if not _is_blank(v)
     )
-    return hash(parts) % (2**32)
+    digest = hashlib.blake2b(repr(parts).encode("utf-8"), digest_size=4).digest()
+    return int.from_bytes(digest, "big")
 
 
 def learning_style_from_abc_counts(

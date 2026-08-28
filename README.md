@@ -1,165 +1,85 @@
 # GroupGen: Automated Student Grouping System
 
-GroupGen forms classroom project groups by placing students with **similar** motivation, self-esteem, work ethic, and learning style together (homogeneous skill profiles). After clustering, the system balances group sizes and swaps students when needed so **every minority gender and ethnicity label** in that class is **spread into pairs** across groups (e.g. 5 students who share the same underrepresented label → two groups with 2 each plus one remainder), not left as singletons in every group and not piled into one group. The dominant gender or ethnicity in the roster is not rebalanced (that would undo minority pairing). One leftover singleton can still happen when counts do not divide evenly.
+GroupGen forms classroom project groups by placing students with **similar psychometric profiles** together. It clusters on four behavioral dimensions — **Learning Style**, **Work Ethic**, **Motivation**, and **Self-Esteem** — using **K-Medoids (PAM)** with **Manhattan (L1)** distance. Gender and ethnicity are collected for reporting and post-hoc analysis but are **never** fed into the distance matrix or clustering algorithm.
 
-**Production algorithm:** K-Medoids (PAM) with **Manhattan (L1)** distance on scaled behavioral features (`random_state=42`).
+> **Research goal:** Produce homogeneous skill-profile teams (students who work at a similar pace and share learning preferences) while enforcing realistic group-size constraints. Each run exports a per-team **intra-group cohesion score** (mean pairwise feature distance) for downstream regression analysis.
 
-**Developer docs:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — full data lifecycle, module map, and API contract.
+> **Quick demo for reviewers:** Install dependencies (Steps 1–2), then run the **Web UI** (Step 4) and upload `backend/data/templates/classroom_template.csv` to see grouped students visually.
 
----
-
-## Quick start (classroom study)
-
-Teachers export a CSV from Google Forms and upload it **as-is** through the web UI (no manual rescoring).
-
-1. Install dependencies ([Installation](#installation)).
-2. **API:** `uvicorn backend.api:app --reload --port 8000` (from project root).
-3. **UI:** `cd frontend && npm install && npm run dev`
-4. Open [http://localhost:3000](http://localhost:3000), upload CSV, set group size, click **Generate Groups**.
-
-Teacher guide (form layout, VAK scoring, troubleshooting): **[STUDY_SETUP.md](STUDY_SETUP.md)**
-
-**Sample CSVs** (30 students each, in `backend/data/templates/`):
-
-| File | Use |
-|------|-----|
-| `google_form_sample.csv` | Raw-style Google Form export (tests intake) |
-| `classroom_template.csv` | Pre-scored 7 columns (fast smoke test / evaluation) |
-| `low_scores_template.csv` | Pre-scored 7 columns, all low Motivation/Self_Esteem/Work_Ethic (1–2) |
-
-Regenerate samples: `python backend/data/templates/_build_samples.py`
+**Deep dive for code reviewers:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
 ---
 
-## How it works
+## Algorithm at a glance
 
-### Input (two supported formats)
-
-| Format | Who uses it | What happens |
-|--------|-------------|----------------|
-| **Raw Google Form CSV** | Teachers (study) | Auto-detected → `group_gen_intake` scores survey → 7 columns |
-| **Pre-scored CSV** | Tests, spreadsheets | Seven columns already present → validate only |
-
-See [Data format](#data-format) and [Google Form intake](#google-form-intake).
-
-### Ingest — `prepare_for_grouping` (`data_loader.py`)
-
-All production paths use the same ingest step **before** any math runs:
-
-1. Read CSV (`utf-8-sig`, auto-detect comma / semicolon / tab)
-2. **If raw Google Form:** `group_gen_intake.process_google_form` (VAK + Likert + demographics)
-3. Normalize column names (e.g. `Ethnicity` → `Diversity`)
-4. Drop blank rows (common at end of Form exports)
-5. Validate required fields, 1–4 scores, unique names, non-empty gender/diversity
-6. Preprocess (`M`/`F` → Male/Female, trim strings, title-case learning style)
-7. Validate again (catch values that could not be coerced)
-
-Failures return clear `ValueError` messages → HTTP 400 in the API.
-
-### Grouping — `run_grouping_pipeline` (`pipeline.py`)
-
-Shared by **API** and **CLI**. Only cluster **labels** are updated after ingest; student survey columns in the DataFrame are never modified.
-
-| Step | What it does |
-|------|----------------|
-| 1. Ingest | Done by caller (`prepare_for_grouping`) |
-| 2. Group count | `n_groups = ceil(students / target_size)` |
-| 3. Features | Motivation, Self_Esteem, Work_Ethic + one-hot Learning_Style (standardized) |
-| 4. Distances | Pairwise **Manhattan** on features only — **no Gender/Diversity** |
-| 5. Clustering | **K-Medoids (PAM)** on distance matrix (`random_state=42`) |
-| 6. Size balance | Move students until each group size is valid (raises if impossible) |
-| 7–9. Fairness | For each **minority** gender and ethnicity label, spread into pairs across groups (low-cost swaps); alternate gender/diversity passes until stable |
-| 10. Invariants | Prove every student assigned, sizes match formula, no group over target |
-
-If structural checks fail → HTTP 422 (API) or CLI exit with error. Residual fairness issues → `warnings` in API/CLI/manifest, not silent success.
-
-### Outputs
-
-| Path | How to run | Output |
-|------|------------|--------|
-| **Web UI** | `npm run dev` + API | Group cards, summary line, optional warnings banner |
-| **API** | `POST /generate-groups?group_size=5` | JSON (`groups`, `warnings`, `group_size_summary`, …) |
-| **CLI** | `python -m backend.generate_groups` | `backend/output/runs/<timestamp>_<id>/` (CSV, report, manifest) |
-| **Research** | `python -m backend.run_full_evaluation` | `backend/output_plots/runs/<timestamp>_<id>/` — **not** live grouping |
+| Component | Implementation |
+|-----------|----------------|
+| **Features (6-D)** | `StandardScaler` on Motivation, Self_Esteem, Work_Ethic (1–4) + one-hot Learning_Style (Visual / Auditory / Kinesthetic) |
+| **Distance** | Manhattan L1 |
+| **Clustering** | K-Medoids (PAM) on precomputed distance matrix, `random_state=42` |
+| **Size constraints** | Two strategies run in parallel; lower PAM cost wins: (A) post-hoc medoid repair, (B) capacity-constrained PAM with Hungarian assignment |
+| **Cohesion IV** | Per team: mean upper-triangle pairwise L1 in feature space (lower = more similar) |
+| **Demographics** | Gender, Diversity — metadata only, excluded from `compute_feature_vector` |
 
 ---
 
-## Project structure
+## Step-by-step: run the system
 
-```
-GroupGen/
-├── backend/
-│   ├── api.py                 # FastAPI: upload → JSON
-│   ├── pipeline.py            # Production grouping lifecycle
-│   ├── data_loader.py         # CSV ingest, validation, normalization
-│   ├── group_gen_intake.py    # Raw Google Form → 7 clustering columns
-│   ├── vak_answer_catalog.py  # VAK option text → A/B/C → learning style
-│   ├── paths.py               # Canonical paths (template CSV, output dirs)
-│   ├── group_config.py        # ceil(n / target_size) group count
-│   ├── check_imports.py       # Smoke test: python -m backend.check_imports
-│   ├── clustering.py          # Features, distances, size balancing, isolation checks
-│   ├── fairness_distribution.py # Spread minority gender/diversity into pairs (NumPy)
-│   ├── kmedoids.py            # K-Medoids (PAM) on distance matrix
-│   ├── invariants.py          # Post-pipeline structural checks
-│   ├── json_util.py           # NumPy/pandas → JSON-safe types
-│   ├── http_util.py           # Readable API error messages
-│   ├── generate_groups.py     # CLI + per-run manifest
-│   ├── run_manifest.py        # Audit JSON per CLI run
-│   ├── run_full_evaluation.py # Research algorithm comparison
-│   ├── evaluate_clustering.py
-│   ├── skill_variance.py
-│   └── data/templates/        # classroom_template.csv, google_form_sample.csv, low_scores_template.csv (30 students each)
-├── frontend/                  # Next.js upload UI (src/app/page.tsx)
-├── docs/
-│   └── ARCHITECTURE.md        # Deep dive for code readers
-├── requirements.txt
-├── STUDY_SETUP.md
-└── README.md
-```
+> **For professors and reviewers:** Start with **Step 4 (Web UI)**. It is the easiest way to upload a survey CSV, see balanced groups on screen, and inspect per-group motivation, work ethic, and learning-style breakdowns. The CLI (Step 5) is for saved audit files and research exports.
 
----
+### Prerequisites
 
-## Installation
+- Python 3.10+ (3.11 recommended)
+- Node.js 18+ (required for the Web UI)
+- Git clone of this repository
 
-```bash
-git clone <your-repo-url>
-cd GroupGen
-```
+### Step 1 — Install Python dependencies
 
-### Python (API + CLI)
+From the project root (`GroupGen/`):
 
 ```bash
 python -m venv venv
 ```
 
-**Windows:** `.\venv\Scripts\activate`  
+**Windows (PowerShell):** `.\venv\Scripts\Activate.ps1`  
+If `python` is not found, try `py -3 -m venv venv` instead.  
 **Mac/Linux:** `source venv/bin/activate`
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Core packages: `numpy`, `pandas`, `scikit-learn`, `fastapi`, `uvicorn`, `matplotlib`.  
-`gower` is optional — used only by `run_full_evaluation`, not classroom grouping.
-
-### Frontend (web UI)
+### Step 2 — Install frontend dependencies
 
 ```bash
 cd frontend
 npm install
+cd ..
 ```
 
----
+### Step 3 — Verify the pipeline (optional)
 
-## Running the system
+```bash
+python -m backend.check_imports
+```
 
-### Web UI + API (recommended for teachers)
+Expected output: `OK` (smoke test on sample CSV + Google Form intake).
 
-**Terminal 1 — API** (project root):
+```bash
+python -m pytest backend/test_pipeline.py -v
+```
+
+### Step 4 — Run the Web UI (recommended)
+
+Use two terminals. Keep both running while you review groups.
+
+**Terminal 1 — API** (project root, venv active):
 
 ```bash
 uvicorn backend.api:app --reload --host 0.0.0.0 --port 8000
 ```
+
+Health check: [http://127.0.0.1:8000/](http://127.0.0.1:8000/) should return `{"status":"GroupGen API is running"}`.
 
 **Terminal 2 — Frontend:**
 
@@ -170,125 +90,228 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-Optional: `NEXT_PUBLIC_API_URL` if the API is not on `http://127.0.0.1:8000`.
+**In the UI:**
 
-### CLI only
+1. Upload a CSV (try `backend/data/templates/classroom_template.csv` for a quick demo).
+2. Set **Group Size** (e.g. 5).
+3. Click **Generate Groups**.
 
-```bash
-python -m backend.generate_groups
-```
+**What you will see:** one card per group with student names, group size, average Motivation / Self-Esteem / Work Ethic, and learning-style breakdown (Visual / Auditory / Kinesthetic). Use **Download PDF** for a printable roster.
 
-Defaults to `backend/data/templates/classroom_template.csv`. Override:
+Raw Google Form exports work the same way — upload the downloaded CSV as-is. See [STUDY_SETUP.md](STUDY_SETUP.md) for required form layout.
+
+### Step 5 — CLI (research exports and audit files)
+
+Use the CLI when you need saved files (`final_groups.csv`, `run_manifest.json`, `research_export.csv`) rather than the on-screen view.
 
 ```bash
 # Windows
-set GROUPGEN_INPUT_CSV=C:\path\to\responses.csv
-set GROUPGEN_OUTPUT_CSV=backend\output\my_run\final_groups.csv
+set GROUPGEN_INPUT_CSV=backend\data\templates\classroom_template.csv
+set GROUPGEN_GROUP_SIZE=5
+python -m backend.generate_groups
+
+# Mac/Linux
+export GROUPGEN_INPUT_CSV=backend/data/templates/classroom_template.csv
+export GROUPGEN_GROUP_SIZE=5
 python -m backend.generate_groups
 ```
 
-Default writes (unique folder per run):
+**Outputs** (`backend/output/runs/<timestamp>_<uuid>/`):
 
-- `backend/output/runs/<timestamp>_<id>/final_groups.csv` — scored columns + `Group_ID`
-- `backend/output/runs/<timestamp>_<id>/final_groups_report.txt`
-- `backend/output/runs/<timestamp>_<id>/run_manifest.json` — parameters, warnings, paths
-- `backend/output/runs/<timestamp>_<id>/raw_responses_with_groups.csv` — **only when input was a raw Google Form export** (original columns + `Group_ID`)
+| File | Purpose |
+|------|---------|
+| `final_groups.csv` | Teacher roster: Name, scores, demographics, `Group_ID` |
+| `research_export.csv` | Anonymized student table + cohesion scores |
+| `team_cohesion.csv` | Per-team cohesion and trait averages |
+| `final_groups_report.txt` | Printable text report |
+| `run_manifest.json` | Seed, strategy, PAM cost, git commit |
 
-### API directly
+**Real Google Form export:**
+
+```bash
+set GROUPGEN_INPUT_CSV=C:\path\to\form_responses.csv
+set GROUPGEN_GROUP_SIZE=5
+python -m backend.generate_groups
+```
+
+**Direct API call** (same backend as the UI):
 
 ```bash
 curl -X POST "http://127.0.0.1:8000/generate-groups?group_size=5" \
-  -F "file=@path/to/responses.csv"
+  -F "file=@backend/data/templates/classroom_template.csv"
 ```
 
-Health check: `GET http://127.0.0.1:8000/`
+### Step 6 — Inspect clustering quality (diagnostics)
+
+```bash
+python -m backend.diagnose_feature_clusters backend/data/templates/classroom_template.csv --group-size 5
+```
+
+Prints silhouette scores, PAM cost, mean within-cluster pairwise L1, and confirms demographics are excluded from features.
 
 ---
 
-## Research: algorithm evaluation (optional)
+## Program structure (where to read the code)
 
-Compares clustering variants on the template dataset. **Does not** use `run_grouping_pipeline`.
+Read in this order to follow one request end-to-end:
+
+```
+CSV upload
+    │
+    ▼
+data_loader.prepare_for_grouping     ← ingest, validate, normalize
+    │   └── group_gen_intake         ← raw Google Form → 7 columns
+    │   └── vak_answer_catalog       ← VAK option text → A/B/C → style
+    ▼
+pipeline.run_grouping_pipeline     ← production orchestrator
+    │   ├── clustering.compute_feature_vector      (6-D psychometric matrix)
+    │   ├── gpu_ops / sklearn                      (Manhattan distance matrix)
+    │   ├── kmedoids.kmedoids_pam                  (unconstrained PAM)
+    │   ├── kmedoids.kmedoids_size_constrained     (capacity seats)
+    │   ├── clustering.enforce_group_size          (post-hoc repair)
+    │   ├── cohesion.compute_team_cohesion         (per-team IV)
+    │   └── invariants.assert_assignment_invariants
+    ▼
+generate_groups / api                ← export
+    └── research_export              ← research_export.csv + team_cohesion.csv
+```
+
+| Module | Role |
+|--------|------|
+| `backend/data_loader.py` | CSV read, column aliases, two-pass validation |
+| `backend/group_gen_intake.py` | Raw Form → Motivation, Self_Esteem, Work_Ethic, Learning_Style, Gender, Diversity |
+| `backend/vak_answer_catalog.py` | Paper-accurate VAK scoring from full option text |
+| `backend/clustering.py` | Feature engineering, Manhattan matrix, size balancing |
+| `backend/kmedoids.py` | PAM + size-constrained K-Medoids (Hungarian assignment) |
+| `backend/pipeline.py` | Dual size-strategy bake-off, cohesion, invariants |
+| `backend/cohesion.py` | Per-team mean pairwise L1 cohesion metric |
+| `backend/research_export.py` | Anonymized student_id, z-features, cohesion CSV |
+| `backend/invariants.py` | Post-assignment structural checks (→ HTTP 422 if fail) |
+| `backend/api.py` | FastAPI REST endpoint |
+| `backend/generate_groups.py` | CLI with per-run audit folder |
+| `backend/diagnose_feature_clusters.py` | Cluster quality diagnostics |
+
+Legacy modules (`fairness_distribution.py`, Gower distance in `evaluate_clustering.py`) exist for research comparison only and are **not** called by the production pipeline.
+
+---
+
+## How grouping works (detailed)
+
+### 1. Ingest — `prepare_for_grouping`
+
+1. Read CSV (`utf-8-sig`; auto-repair comma-split VAK answers in Form exports)
+2. If raw Google Form: score VAK + Likert sections via `group_gen_intake`
+3. Normalize column names, drop blank rows, validate ranges (1–4 scores, unique names)
+4. Preprocess strings (M/F → Male/Female, title-case learning style)
+5. Reject empty Likert sections (no silent NaN → score 4)
+
+### 2. Feature vector (6 dimensions)
+
+| Source column | Transform | In distance matrix? |
+|---------------|-----------|---------------------|
+| Motivation | `StandardScaler` (z-score) | Yes |
+| Self_Esteem | `StandardScaler` (z-score) | Yes |
+| Work_Ethic | `StandardScaler` (z-score) | Yes |
+| Learning_Style | One-hot [Visual, Auditory, Kinesthetic] | Yes |
+| Gender | Metadata only | **No** |
+| Diversity | Metadata only | **No** |
+
+### 3. Clustering lifecycle
+
+1. `n_groups = ceil(n_students / target_size)`
+2. Build Manhattan distance matrix on 6-D features
+3. **Strategy A:** Unconstrained PAM → `enforce_group_size` (move students closest to receiver medoid)
+4. **Strategy B:** Size-constrained PAM (fixed capacities + Hungarian seat assignment)
+5. Keep labeling with **lower PAM cost** (total distance to medoids)
+6. Assert invariants: every student assigned, sizes ∈ {⌊n/k⌋, ⌊n/k⌋+1}, no group > target
+7. Compute per-team cohesion (mean pairwise L1)
+
+### 4. Research export schema (`research_export.csv`)
+
+| Column | Description |
+|--------|-------------|
+| `student_id` | Anonymized blake2b hash of name (stable across runs) |
+| `assigned_team_id` | 1-based team ID |
+| `Motivation`, `Self_Esteem`, `Work_Ethic` | Raw 1–4 scores |
+| `Motivation_z`, `Self_Esteem_z`, `Work_Ethic_z` | Z-scored values used in clustering |
+| `Learning_Style` | Visual / Auditory / Kinesthetic |
+| `LS_Visual`, `LS_Auditory`, `LS_Kinesthetic` | One-hot flags |
+| `intra_team_cohesion_score` | Mean pairwise L1 within team (lower = more similar) |
+| `Gender`, `Diversity` | Metadata for post-hoc controls only |
+
+---
+
+## Sample data
+
+| File | Rows | Use |
+|------|------|-----|
+| `backend/data/templates/classroom_template.csv` | 30 | Pre-scored; default CLI input |
+| `backend/data/templates/google_form_sample.csv` | 30 | Raw-style Form export (tests intake) |
+| `backend/data/templates/low_scores_template.csv` | 30 | All low Motivation/SE/WE (edge-case test) |
+
+Regenerate: `python backend/data/templates/_build_samples.py`
+
+---
+
+## Reproducibility guarantees
+
+- **Deterministic clustering:** Same CSV + group size + seed (42) → identical groups
+- **Stable VAK ties:** Blake2b digest of normalized answers (not Python `hash()`)
+- **Audit trail:** CLI writes `run_manifest.json` with seed, strategy, PAM cost, git commit
+- **Validation gates:** Invalid data → HTTP 400; broken assignments → HTTP 422
+
+**Quick verification:**
+
+```bash
+python -m backend.check_imports
+python -m pytest backend/test_pipeline.py -v
+```
+
+---
+
+## Google Form requirements
+
+Teachers upload the **unmodified** Google Forms CSV. Required structure:
+
+1. Name column (`What is your first and last name`)
+2. 30 VAK learning-style items (option text must match `vak_answer_catalog.py`)
+3. Four **magic wand** divider questions between sections
+4. Self-esteem (1–7), Motivation, Work Ethic Likert blocks
+5. Gender identity and ethnicity columns
+
+Full layout: [STUDY_SETUP.md](STUDY_SETUP.md)
+
+---
+
+## Optional: algorithm comparison (research only)
+
+Compares K-Means, K-Medoids, Gower on template data. **Does not** use the production pipeline.
 
 ```bash
 python -m backend.run_full_evaluation
 ```
 
-Includes K-Means / K-Medoids (Euclidean, Manhattan) and optional K-Medoids (Gower).  
 Outputs under `backend/output_plots/runs/<timestamp>_<id>/`.
-
----
-
-## Data format
-
-| Column | Type | Description |
-| :--- | :--- | :--- |
-| `Name` | String | Unique student name or ID |
-| `Gender` | String | Male / Female (`M` / `F` accepted); other values allowed (e.g. Non-binary) |
-| `Motivation` | Int (1–4) | 1 = low, 4 = high |
-| `Self_Esteem` | Int (1–4) | 1 = low, 4 = high |
-| `Work_Ethic` | Int (1–4) | 1 = low, 4 = high |
-| `Learning_Style` | String | Visual, Auditory, or Kinesthetic |
-| `Diversity` | String | Race/ethnicity category (consistent spelling) |
-
-Header aliases (pre-scored CSV only): `backend/data_loader.py` → `COLUMN_ALIASES`.
-
-### Google Form intake
-
-Teachers upload the **unmodified** Google Forms CSV. No spreadsheet rescoring required.
-
-| Module | Role |
-|--------|------|
-| `group_gen_intake.py` | Finds sections via **magic wand** dividers; scores Likert blocks; builds 7 columns |
-| `vak_answer_catalog.py` | Maps each VAK option text to paper letter **A / B / C** |
-
-**Learning style (VAK)** — same rule as the research paper:
-
-1. Each of the 30 items has options **(a)**, **(b)**, **(c)** → count as **A**, **B**, **C**.
-2. Whichever letter has the **highest count** wins: A → Visual, B → Auditory, C → Kinesthetic.
-3. If two or three letters **tie**, the system picks **one** tied style (stable per student’s answers).
-
-Option text in Google Forms must match the official inventory in `vak_answer_catalog.py` (Google exports the full sentence the student selected, not the letter alone).
-
-**Other scored fields:**
-
-- **Self-esteem block** — 1–7 Likert mean → 1–4 scale  
-- **Motivation & work ethic blocks** — section mean → 1–4 scale  
-- **Gender / diversity** — from end-of-form columns  
-
-**Form requirements:** `What is your first and last name`, four **magic wand** divider questions between sections, `To which gender identity…`, `To which ethnicity…`. See [STUDY_SETUP.md](STUDY_SETUP.md).
-
----
-
-## Safety and study guarantees
-
-- **Determinism:** Same CSV + group size → same groups (seed 42, stable row order).
-- **No NaN in clustering:** Ingest validation + finite-matrix checks before K-Medoids.
-- **No invalid success:** Imbalanced sizes or broken assignments block the response.
-- **Stateless API:** No server-side files; each request is isolated.
-- **CLI audit trail:** UUID run folders + `run_manifest.json`.
-
-**Verify setup:** from repo root, `python -m backend.check_imports` should print `OK`.
 
 ---
 
 ## Known limitations
 
-- Fairness runs until no improving swap remains (bounded iteration cap); some isolation may remain when counts don't divide evenly → check `warnings`.
-- Fairness applies to **every** `Gender` and `Diversity` value with 2+ students and fewer than half the class; lone-member warnings use groups of **4+** (gender) or **3+** (diversity).
-- Small classes may not have enough donors for every swap.
-- Web UI does not download CSV yet — use CLI or print from the browser.
+- Learning-style one-hot and z-scored traits share the same L1 space (implicit weighting — document in methods)
+- Small classes with repeated score patterns may produce uneven clusters before size balancing
+- Web UI does not download CSV yet — use CLI for research exports
+- API is stateless; no server-side file persistence
 
 ---
 
-## Documentation
+## Documentation index
 
-| File | Purpose |
-|------|---------|
-| [STUDY_SETUP.md](STUDY_SETUP.md) | Teacher setup, Google Form layout, VAK, troubleshooting |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Code map, intake lifecycle, API JSON, research vs production |
-| [workspace_cleanup_report.md](workspace_cleanup_report.md) | Directory flattening log (frontend + backend alignment) |
-| Inline comments in `backend/pipeline.py`, `group_gen_intake.py`, … | Step-by-step logic while reading source |
-| `backend/data/templates/*.csv` | 30-student sample files for tests and demos |
+| File | Audience | Purpose |
+|------|----------|---------|
+| **README.md** (this file) | ML reviewers, researchers | Goals, run steps, algorithm summary |
+| [STUDY_SETUP.md](STUDY_SETUP.md) | Teachers | Google Form layout, troubleshooting |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Developers | Full lifecycle, module map, API contract |
+| `backend/pipeline.py` | Code readers | Annotated production orchestrator |
 
 ---
 

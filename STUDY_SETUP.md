@@ -1,6 +1,6 @@
 # GroupGen — Classroom Study Setup
 
-Students are grouped by **similar** motivation, self-esteem, work ethic, and learning style. After clustering, the system balances group sizes and swaps students when needed so no one is the sole representative of their **gender** or **diversity** category in a group.
+Students are grouped by **similar** motivation, self-esteem, work ethic, and learning style (psychometric features only). After clustering, the system balances group sizes using the same Manhattan distance matrix. Gender and diversity are collected for reporting but **not** used in clustering.
 
 Teachers upload the **raw CSV** from Google Forms. GroupGen converts it automatically—no manual spreadsheet step.
 
@@ -137,14 +137,16 @@ Each run creates `backend/output/runs/<timestamp>_<id>/`:
 
 ## 7. What the algorithm does (API and CLI)
 
+> On branch **`feature-only-clustering`**, steps 4–5 below are **not** run in production.
+
 1. **Ingest** — raw form → seven columns (or validate pre-scored CSV)  
 2. **K-Medoids (Manhattan)** on Motivation, Self_Esteem, Work_Ethic, Learning_Style  
 3. **Size balancing** — e.g. 31 students @ target 5 → seven groups of 4 and 5  
-4. **Gender fairness** — for each gender label that is a **minority** in this class (fewer than half the students), spread into pairs across groups (e.g. 2 together, 5 → 2+2+1); applies to Female, Male, Non-binary, Prefer not to say, etc.  
-5. **Diversity fairness** — same pairing rule for each **minority** ethnicity/diversity label (Hispanic/Latinx, Asian American, …) in groups of 3+  
-6. **Invariants + warnings** — block bad rosters; flag swap limits  
+4. **Invariants** — block bad rosters (wrong group count, size cap exceeded)  
 
-Gender and Diversity are **not** in clustering distance; they only guide swaps.
+Gender and Diversity are **not** in clustering distance and **not** used for post-cluster swaps on this branch. They still appear in API/CLI output for teacher review.
+
+*(Main branch also ran gender/diversity fairness swaps after step 3; that logic lives in `fairness_distribution.py` for tests/research only here.)*
 
 ---
 
@@ -153,7 +155,7 @@ Gender and Diversity are **not** in clustering distance; they only guide swaps.
 - Use the **same target group size** across sections when comparing runs.  
 - Keep Google Form option wording **identical** to the research instrument.  
 - Save CLI output folders with section and date in the name.  
-- Read API **`warnings`** even on success—some fairness cases may need a manual check.
+- **Review group rosters manually** for gender/diversity representation on this branch.
 
 ---
 
@@ -169,7 +171,7 @@ Gender and Diversity are **not** in clustering distance; they only guide swaps.
 | Could not connect to backend | Start uvicorn on port 8000 |
 | Values outside 1–4 after intake | Check Likert sections export numbers or agree/disagree labels |
 | Duplicate names | Each student name must be unique |
-| Warnings after success | Review listed groups; swap budget was exhausted |
+| Warnings after success | On this branch, `warnings` is usually empty; review rosters manually for demographic balance |
 
 ---
 
@@ -181,6 +183,6 @@ Gender and Diversity are **not** in clustering distance; they only guide swaps.
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Module map, lifecycle, API contract |
 | `backend/group_gen_intake.py` | Section detection and Likert scoring |
 | `backend/vak_answer_catalog.py` | 30×3 option text → A/B/C |
-| `backend/pipeline.py` | Clustering and fairness |
+| `backend/pipeline.py` | Feature-only clustering lifecycle |
 
 Verify: `python -m backend.check_imports` from repo root → `OK`.
