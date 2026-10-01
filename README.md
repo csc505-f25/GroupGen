@@ -66,7 +66,7 @@ python -m backend.check_imports
 Expected output: `OK` (smoke test on sample CSV + Google Form intake).
 
 ```bash
-python -m pytest backend/test_pipeline.py -v
+python -m pytest backend/test_pipeline.py backend/test_synthetic_groups.py -v
 ```
 
 ### Step 4 — Run the Web UI (recommended)
@@ -264,7 +264,7 @@ Regenerate: `python backend/data/templates/_build_samples.py`
 
 ```bash
 python -m backend.check_imports
-python -m pytest backend/test_pipeline.py -v
+python -m pytest backend/test_pipeline.py backend/test_synthetic_groups.py -v
 ```
 
 ---

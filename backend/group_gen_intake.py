@@ -15,20 +15,61 @@ import pandas as pd
 
 from .vak_answer_catalog import score_learning_style_from_row
 
+# Classroom Google Forms export motivation / work-ethic as frequency labels,
+# not numbers. "Somtimes" is a recurring typo in this study's exports.
+_FREQUENCY_MAP = {
+    "always": 5,
+    "usually": 4,
+    "sometimes": 3,
+    "somtimes": 3,
+    "rarely": 2,
+    "never": 1,
+}
+_AGREE_MAP = {
+    "strongly agree": 5,
+    "agree": 4,
+    "somewhat agree": 4,
+    "neutral": 3,
+    "neither agree nor disagree": 3,
+    "somewhat disagree": 2,
+    "disagree": 2,
+    "strongly disagree": 1,
+}
+_LIKERT_TEXT_MAP = {**_FREQUENCY_MAP, **_AGREE_MAP}
+
 
 def _require_finite_mean(mean_val: float, section: str) -> float:
     """Reject empty or non-numeric Likert sections instead of silently bucketing."""
     if pd.isna(mean_val) or not np.isfinite(mean_val):
         raise ValueError(
             f"{section} section has no valid numeric responses. "
-            "Ensure every student answered the Likert items in that block."
+            "Ensure every student answered the Likert items in that block "
+            "(numbers, or labels such as Always / Usually / Sometimes / Never)."
         )
     return float(mean_val)
 
 
-def _mean_to_1_4_mot_we(mean_val: float) -> int:
-    """Map a section mean (1–4 Likert) to discrete 1–4 buckets."""
+def _to_numeric_likert(series: pd.Series) -> pd.Series:
+    """Coerce a Likert column: frequency/agree labels first, then numbers."""
+    text = series.astype(str).str.strip().str.lower()
+    blank = text.isin(("", "nan", "none", "null"))
+    mapped = text.map(_LIKERT_TEXT_MAP)
+    numeric = pd.to_numeric(series, errors="coerce")
+    return mapped.fillna(numeric).mask(blank)
+
+
+def _mean_to_1_4_mot_we(mean_val: float, *, scale_max: float = 4.0) -> int:
+    """Map a section mean to discrete 1–4 buckets."""
     mean_val = _require_finite_mean(mean_val, "Motivation/work ethic")
+    if scale_max > 4.5:
+        # 5-point frequency (Never=1 … Always=5)
+        if mean_val <= 2.0:
+            return 1
+        if mean_val <= 3.0:
+            return 2
+        if mean_val <= 4.0:
+            return 3
+        return 4
     if mean_val <= 2.0:
         return 1
     if mean_val <= 2.6:
@@ -48,6 +89,33 @@ def _mean_to_1_4_se(mean_val: float) -> int:
     if mean_val <= 5.5:
         return 3
     return 4
+
+
+def _score_likert_block(
+    raw_section: pd.DataFrame,
+    names: pd.Series,
+    section: str,
+    bucket,
+) -> pd.Series:
+    """Average a Likert block and bucket to 1–4, with a student-named error."""
+    if raw_section.shape[1] == 0:
+        raise ValueError(
+            f"{section} section is empty. Check that four magic-wand divider "
+            "questions separate learning style, self-esteem, motivation, and work ethic."
+        )
+    numeric = raw_section.apply(_to_numeric_likert)
+    means = numeric.mean(axis=1)
+    if means.isna().any():
+        bad = names.loc[means.isna()].astype(str).str.strip().tolist()[:8]
+        raise ValueError(
+            f"{section} section has no valid numeric responses for: {bad}. "
+            "Likert items must be numbers or labels such as Always / Usually / "
+            "Sometimes / Never."
+        )
+    if section == "Motivation/work ethic":
+        scale_max = float(np.nanmax(numeric.to_numpy()))
+        return means.map(lambda m: bucket(m, scale_max=scale_max))
+    return means.map(bucket)
 
 
 def _header_text(columns: list) -> list[str]:
@@ -109,8 +177,10 @@ def process_google_form(
     gender_idx = _find_column_index(headers, "gender identity")
     diversity_idx = _find_column_index(headers, "ethnicity")
 
+    # Email may be at the start (Google "collect email") or at the end of the
+    # form as a regular question. Only the former is a VAK-section boundary.
     meta_end = name_idx
-    if email_idx != -1:
+    if email_idx != -1 and email_idx < wand_indices[0]:
         meta_end = max(meta_end, email_idx)
     ls_start = meta_end + 1
     ls_end = wand_indices[0]
@@ -125,26 +195,40 @@ def process_google_form(
 
     out = pd.DataFrame()
     out["Name"] = df.iloc[:, name_idx].fillna("Unknown").astype(str).str.strip()
+    if email_idx != -1:
+        email = df.iloc[:, email_idx].fillna("").astype(str).str.strip()
+        out["Email"] = email.replace({"nan": "", "None": ""})
 
     ls_cols = _section_slice(df, ls_start, ls_end)
+    if ls_cols.shape[1] == 0:
+        raise ValueError(
+            "Learning-style section is empty. Name (and optional Email at the "
+            "top of the form) must come before the VAK questions and the first "
+            "magic-wand divider."
+        )
     out["Learning_Style"] = ls_cols.apply(
         lambda row: score_learning_style_from_row(row.tolist()), axis=1
     )
 
-    se_cols = _section_slice(df, se_start, se_end).apply(
-        pd.to_numeric, errors="coerce"
+    names = out["Name"]
+    out["Self_Esteem"] = _score_likert_block(
+        _section_slice(df, se_start, se_end),
+        names,
+        "Self-esteem",
+        _mean_to_1_4_se,
     )
-    out["Self_Esteem"] = se_cols.mean(axis=1).apply(_mean_to_1_4_se)
-
-    mot_cols = _section_slice(df, mot_start, mot_end).apply(
-        pd.to_numeric, errors="coerce"
+    out["Motivation"] = _score_likert_block(
+        _section_slice(df, mot_start, mot_end),
+        names,
+        "Motivation/work ethic",
+        _mean_to_1_4_mot_we,
     )
-    out["Motivation"] = mot_cols.mean(axis=1).apply(_mean_to_1_4_mot_we)
-
-    we_cols = _section_slice(df, we_start, we_end).apply(
-        pd.to_numeric, errors="coerce"
+    out["Work_Ethic"] = _score_likert_block(
+        _section_slice(df, we_start, we_end),
+        names,
+        "Motivation/work ethic",
+        _mean_to_1_4_mot_we,
     )
-    out["Work_Ethic"] = we_cols.mean(axis=1).apply(_mean_to_1_4_mot_we)
 
     out["Gender"] = (
         df.iloc[:, gender_idx].astype(str).str.strip()
@@ -157,9 +241,11 @@ def process_google_form(
         else "Unknown"
     )
 
-    out = out[
+    cols = ["Name"]
+    if "Email" in out.columns:
+        cols.append("Email")
+    cols.extend(
         [
-            "Name",
             "Gender",
             "Motivation",
             "Self_Esteem",
@@ -167,7 +253,8 @@ def process_google_form(
             "Learning_Style",
             "Diversity",
         ]
-    ]
+    )
+    out = out[cols]
 
     if output_path:
         out.to_csv(output_path, index=False)

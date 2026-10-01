@@ -119,9 +119,17 @@ def main() -> None:
     assert learning_style_from_abc_counts({"A": 10, "B": 10, "C": 8}, tie_seed=42) == tie_style
 
     scored = process_google_form(raw_df)
-    assert list(scored.columns) == [
-        "Name", "Gender", "Motivation", "Self_Esteem", "Work_Ethic", "Learning_Style", "Diversity"
+    expected_cols = [
+        "Name",
+        "Email",
+        "Gender",
+        "Motivation",
+        "Self_Esteem",
+        "Work_Ethic",
+        "Learning_Style",
+        "Diversity",
     ]
+    assert list(scored.columns) == expected_cols
     assert scored["Motivation"].between(1, 4).all()
     assert scored["Self_Esteem"].between(1, 4).all()
     assert scored["Work_Ethic"].between(1, 4).all()

@@ -5,7 +5,8 @@ Production path (via ``pipeline.run_grouping_pipeline``):
   - ``compute_feature_vector`` — Motivation, Self_Esteem, Work_Ethic, Learning_Style only
   - ``compute_psychometric_distance_matrix`` — Manhattan for clustering and size balancing
   - ``enforce_group_size`` — balance counts after K-Medoids by moving the student
-    closest (Manhattan) to the undersized group's medoid
+    closest (Manhattan) to the undersized group's medoid; reopens empty clusters
+    so identical-profile students still split to the target size
   - ``check_*_isolation`` / ``rebalance_demographic_column`` — legacy research helpers (not used by production pipeline on ``feature-only-clustering``)
 
 Research / legacy (not used for live classroom grouping):
@@ -29,6 +30,7 @@ VALID_LEARNING_STYLES = ["Visual", "Auditory", "Kinesthetic"]
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.metrics import pairwise_distances
 from sklearn.decomposition import PCA
+from .group_config import calculate_n_groups
 from .kmedoids import kmedoids_pam
 
 # ==========================================
@@ -66,11 +68,15 @@ def enforce_group_size(
     Redistribute students so each group matches the ceil(n/k) size distribution.
 
     Target counts: ``base = n // k`` and ``base + 1`` for the remainder groups.
+    ``k`` is ``calculate_n_groups(n, group_size)``, not the number of non-empty
+    labels. If PAM leaves a cluster empty (common when many students share the
+    same profile), those missing groups are reopened and seeded so no team
+    exceeds ``group_size``.
 
     Production passes the psychometric Manhattan ``distance_matrix`` (same matrix
     used by K-Medoids). Each move picks the oversized-group student closest to
     the **medoid** of an undersized group — not nearest neighbor to any member,
-    and not Gender/Diversity.
+    and not Gender/Diversity. Empty receivers are seeded first (no medoid yet).
 
     Evaluation may instead pass ``feature_matrix`` (distance to arithmetic mean).
 
@@ -80,18 +86,24 @@ def enforce_group_size(
         return labels
 
     n_students = len(labels)
-    unique_groups = np.unique(labels)
-    n_groups = len(unique_groups)
-    new_labels = labels.copy()
+    intended_n_groups = calculate_n_groups(n_students, group_size)
+    # Compact to 0..n_present-1 so unused PAM ids become trailing empty slots.
+    _, compact = np.unique(labels, return_inverse=True)
+    new_labels = compact.astype(int, copy=True)
+    n_present = int(new_labels.max()) + 1
+    # Never drop below the classroom group count; keep extras if a caller
+    # already created more non-empty clusters than the formula requires.
+    n_groups = max(intended_n_groups, n_present)
+    group_ids = list(range(n_groups))
 
     # Example: 31 students, 7 groups → base=4, remainder=3 → three groups of 5, four of 4.
     base_size = n_students // n_groups
     remainder = n_students % n_groups
-    current_counts = {g: int(np.sum(new_labels == g)) for g in unique_groups}
+    current_counts = {g: int(np.sum(new_labels == g)) for g in group_ids}
 
     # Give the extra +1 seats to the groups that are currently largest (deterministic).
     sorted_groups_by_curr_size = sorted(
-        unique_groups, key=lambda g: current_counts[g], reverse=True
+        group_ids, key=lambda g: current_counts[g], reverse=True
     )
     target_sizes = {
         g_id: base_size + (1 if i < remainder else 0)
@@ -99,10 +111,13 @@ def enforce_group_size(
     }
 
     max_iter = n_students * 2  # hard stop — cannot infinite-loop
+    # Cheaper than any real distance (>= 0) so empty groups fill before
+    # students move between already-populated teams.
+    empty_seed_cost = -1.0
 
     for iteration in range(max_iter):
-        donors = [g for g in unique_groups if current_counts[g] > target_sizes[g]]
-        receivers = [g for g in unique_groups if current_counts[g] < target_sizes[g]]
+        donors = [g for g in group_ids if current_counts[g] > target_sizes[g]]
+        receivers = [g for g in group_ids if current_counts[g] < target_sizes[g]]
 
         if not donors or not receivers:
             break
@@ -116,15 +131,19 @@ def enforce_group_size(
             for r_id in receivers:
                 receiver_indices = np.where(new_labels == r_id)[0]
                 if receiver_indices.size == 0:
-                    continue
-                receiver_medoids[r_id] = _cluster_medoid_index(
-                    distance_matrix, receiver_indices
-                )
+                    receiver_medoids[r_id] = None
+                else:
+                    receiver_medoids[r_id] = _cluster_medoid_index(
+                        distance_matrix, receiver_indices
+                    )
 
             for d_id in donors:
                 for student_idx in np.where(new_labels == d_id)[0]:
                     for r_id, medoid_idx in receiver_medoids.items():
-                        cost = float(distance_matrix[student_idx, medoid_idx])
+                        if medoid_idx is None:
+                            cost = empty_seed_cost
+                        else:
+                            cost = float(distance_matrix[student_idx, medoid_idx])
                         if np.isfinite(cost) and cost < min_cost:
                             min_cost = cost
                             best_move = (int(student_idx), r_id)
@@ -134,10 +153,13 @@ def enforce_group_size(
                 donor_features = feature_matrix[donor_indices]
                 for r_id in receivers:
                     mask = new_labels == r_id
-                    if np.any(mask):
-                        center = feature_matrix[mask].mean(axis=0).reshape(1, -1)
-                    else:
-                        center = np.zeros((1, feature_matrix.shape[1]))
+                    if not np.any(mask):
+                        cost = empty_seed_cost
+                        if cost < min_cost:
+                            min_cost = cost
+                            best_move = (int(donor_indices[0]), r_id)
+                        continue
+                    center = feature_matrix[mask].mean(axis=0).reshape(1, -1)
                     dists = pairwise_distances(
                         donor_features, center, metric=metric
                     ).flatten()
@@ -163,11 +185,11 @@ def enforce_group_size(
         current_counts[new_group] += 1
 
     still_imbalanced = any(
-        current_counts[g] != target_sizes[g] for g in unique_groups
+        current_counts[g] != target_sizes[g] for g in group_ids
     )
     if still_imbalanced:
-        actual = {int(g): current_counts[g] for g in unique_groups}
-        expected = {int(g): target_sizes[g] for g in unique_groups}
+        actual = {int(g): current_counts[g] for g in group_ids}
+        expected = {int(g): target_sizes[g] for g in group_ids}
         raise ValueError(
             f"Could not balance group sizes for target {group_size} "
             f"after {max_iter} moves. Actual sizes: {actual}. Expected: {expected}."

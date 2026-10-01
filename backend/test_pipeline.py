@@ -5,7 +5,11 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from backend.clustering import compute_feature_vector, compute_psychometric_distance_matrix
+from backend.clustering import (
+    compute_feature_vector,
+    compute_psychometric_distance_matrix,
+    enforce_group_size,
+)
 from backend.cohesion import (
     assert_distance_matrix_properties,
     compute_team_cohesion,
@@ -125,3 +129,26 @@ def test_k1_pipeline_does_not_crash() -> None:
     result = run_grouping_pipeline(df, target_size=10, random_state=42)
     assert result.n_groups == 1
     assert len(result.labels) == len(df)
+
+
+def test_enforce_group_size_splits_identical_collapsed_cluster() -> None:
+    """12 identical students labeled as one cluster must become 3 groups of 4."""
+    rows = [
+        {
+            "Name": f"Student {i}",
+            "Gender": "Female" if i % 2 else "Male",
+            "Motivation": 3,
+            "Self_Esteem": 3,
+            "Work_Ethic": 3,
+            "Learning_Style": "Visual",
+            "Diversity": "Group A",
+        }
+        for i in range(12)
+    ]
+    df = pd.DataFrame(rows)
+    D = compute_psychometric_distance_matrix(compute_feature_vector(df))
+    collapsed = np.zeros(len(df), dtype=int)
+    repaired = enforce_group_size(collapsed, 4, distance_matrix=D)
+    counts = np.bincount(repaired)
+    assert len(counts) == 3
+    assert set(counts.tolist()) == {4}

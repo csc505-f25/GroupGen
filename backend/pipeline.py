@@ -27,7 +27,7 @@ from .cohesion import compute_team_cohesion
 from .compute_backend import resolve_backend
 from .gpu_ops import compute_manhattan_distance_matrix, run_kmedoids
 from .group_config import calculate_n_groups
-from .invariants import assert_assignment_invariants
+from .invariants import assert_assignment_invariants, validate_assignment_invariants
 from .kmedoids import capacities_for_target_size, kmedoids_size_constrained
 
 # Fixed seed so API and CLI produce identical groups for the same CSV.
@@ -85,25 +85,41 @@ def _pam_cost_for_labels(distance_matrix: np.ndarray, labels: np.ndarray) -> flo
     return total
 
 
+def _is_size_feasible(labels: np.ndarray, n_students: int, target_size: int) -> bool:
+    """True when labels already satisfy classroom size invariants."""
+    return not validate_assignment_invariants(labels, n_students, target_size)
+
+
 def _select_better_labels(
     distance_matrix: np.ndarray,
     labels_a: np.ndarray,
     labels_b: np.ndarray,
     *,
+    n_students: int,
+    target_size: int,
     name_a: str = "posthoc_repair",
     name_b: str = "size_constrained",
 ) -> Tuple[np.ndarray, str, float, float, float]:
     """
     Keep the labeling with lower PAM cost (higher cohesion).
 
-    If PAM costs tie, prefer higher Manhattan silhouette. If that also ties,
-    prefer size_constrained.
+    Feasible size assignments always beat infeasible ones, even if PAM cost
+    is lower for the collapsed (oversized) clustering. If PAM costs tie,
+    prefer higher Manhattan silhouette. If that also ties, prefer
+    size_constrained.
     Returns labels, chosen name, cost_a, cost_b, chosen_cost.
     """
     from sklearn.metrics import silhouette_score
 
     cost_a = _pam_cost_for_labels(distance_matrix, labels_a)
     cost_b = _pam_cost_for_labels(distance_matrix, labels_b)
+    a_ok = _is_size_feasible(labels_a, n_students, target_size)
+    b_ok = _is_size_feasible(labels_b, n_students, target_size)
+    if a_ok and not b_ok:
+        return labels_a, name_a, cost_a, cost_b, cost_a
+    if b_ok and not a_ok:
+        return labels_b, name_b, cost_a, cost_b, cost_b
+
     if cost_b < cost_a - 1e-9:
         return labels_b, name_b, cost_a, cost_b, cost_b
     if cost_a < cost_b - 1e-9:
@@ -211,7 +227,11 @@ def run_grouping_pipeline(
     )
 
     labels, strategy, cost_a, cost_b, chosen_cost = _select_better_labels(
-        dist_np, labels_a, labels_b
+        dist_np,
+        labels_a,
+        labels_b,
+        n_students=n_students,
+        target_size=target_size,
     )
     timing_ms["pam_cost_a"] = round(cost_a, 4)
     timing_ms["pam_cost_b"] = round(cost_b, 4)
